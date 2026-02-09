@@ -1,7 +1,7 @@
 # HPC Lab
 
 <div align="center">
-<img src="https://raw.githubusercontent.com/gmarciani/hpc-lab/main/resources/brand/banner.png" alt="hpc-lab-banner" width="500">
+<img src="https://raw.githubusercontent.com/gmarciani/hpc-lab/refs/heads/main/resources/brand/banner.png?token=GHSAT0AAAAAADSA5TTUXWJRDZMUNURPZBFC2MJMWSA" alt="hpc-lab-banner" width="500">
 
 [![PyPI version](https://img.shields.io/pypi/v/hpc-lab.svg)](https://pypi.org/project/hpc-lab)
 [![Python versions](https://img.shields.io/pypi/pyversions/hpc-lab.svg)](https://pypi.org/project/hpc-lab)
