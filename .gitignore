@@ -1,0 +1,6 @@
+# Generic
+.ignore
+
+# IntelliJ
+.idea
+*.iml

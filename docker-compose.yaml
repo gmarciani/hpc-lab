@@ -1,0 +1,6 @@
+name: hpc-lab
+services: []
+
+volumes: {}
+
+networks: {}
