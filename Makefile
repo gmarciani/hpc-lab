@@ -1,10 +1,8 @@
-.PHONY: setup install
+default: build
 
-PROJECT_NAME="hpc-lab"
 COMPOSE_FILE="docker-compose.yaml"
-
-PYTHON_VERSION = 3.14.2
-VENV_NAME = hpc-lab-dev
+SSH_KEY=admin/ssh/id_ed25519
+SSH_OPTS=-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -i ${SSH_KEY}
 
 docker-check:
 	@if ! docker info >/dev/null 2>&1; then \
@@ -21,62 +19,52 @@ docker-check:
 			exit 1; \
 		fi; \
 		echo "Docker daemon started successfully."; \
+	else \
+		echo "Docker daemon is running"; \
 	fi
 
 setup:
-	bash tools/setup-dev-environment.sh
-
+	bash resources/tools/setup-dev-environment.sh
 build: docker-check
-	docker compose -f ${COMPOSE_FILE} pull $(container)
-	docker compose -f ${COMPOSE_FILE} build $(container)
-
-start: docker-check
-	docker compose -f ${COMPOSE_FILE} up --detach $(container)
-	@$(MAKE) print-endpoints
-
-restart: docker-check
-	docker compose -f ${COMPOSE_FILE} restart $(container)
-	@$(MAKE) print-endpoints
-
+	docker compose -f ${COMPOSE_FILE} build $(service)
+start: build start-k8s
+	@$(MAKE) describe
 stop: docker-check
-	docker compose -f ${COMPOSE_FILE} stop $(container)
-
+	docker compose -f ${COMPOSE_FILE} stop $(service)
+restart: stop start
+redeploy: clean start
 clean: docker-check
-	@docker compose -f ${COMPOSE_FILE} rm --force --stop --volumes 2>/dev/null || true
-	@images=$$(docker compose -f ${COMPOSE_FILE} config --images 2>/dev/null); \
-	if [ -n "$$images" ]; then \
-		docker rmi --force $$images 2>/dev/null || true; \
-	fi
-	@volumes=$$(docker compose -f ${COMPOSE_FILE} config --volumes 2>/dev/null | sed "s/^/${PROJECT_NAME}_/"); \
-	if [ -n "$$volumes" ]; then \
-		docker volume rm --force ${PROJECT_NAME}_srvdata $$volumes 2>/dev/null || true; \
-	fi
+	docker compose -f ${COMPOSE_FILE} down --rmi local --volumes --remove-orphans
+show:
+	@docker compose -f ${COMPOSE_FILE} ps --format json | \
+		jq -rs '["SERVICE","STATE","HEALTH","URL"], (.[] | . as $$svc | (.Publishers[]? | select(.PublishedPort != 0 and .URL == "127.0.0.1") | [$$svc.Service, $$svc.State, $$svc.Status, "http://localhost:\(.PublishedPort)"]), (select([.Publishers[]? | select(.PublishedPort != 0 and .URL == "127.0.0.1")] | length == 0) | [.Service, .State, .Status, "-"])) | @tsv' | \
+		column -t -s $$'\t' | \
+		sort -u
+describe:
+	@$(MAKE) show
+	-docker compose -f ${COMPOSE_FILE} exec -T admin kubectl get nodes
+	-docker compose -f ${COMPOSE_FILE} exec -T admin kubectl get pods --all-namespaces
+get-logs:
+	docker compose -f ${COMPOSE_FILE} logs $(service) | tail -n 500
+login:
+	docker compose -f ${COMPOSE_FILE} exec -it $(service) /bin/bash
 
-describe: docker-check
-	docker compose -f ${COMPOSE_FILE} ps
+start-k8s: docker-check k8s/.env.secrets.local ${SSH_KEY}
+	docker compose -f ${COMPOSE_FILE} up --detach
+	docker compose -f ${COMPOSE_FILE} exec -T admin k8s-wait
+stop-k8s: docker-check
+	docker compose -f ${COMPOSE_FILE} stop
+test-k8s:
+	docker compose -f ${COMPOSE_FILE} exec -T admin k8s-test
 
-get-logs: docker-check
-	docker compose -f ${COMPOSE_FILE} logs $(container) | tail -n 500
+ssh-admin:
+	ssh ${SSH_OPTS} -p $$(docker compose -f ${COMPOSE_FILE} port admin 22 | cut -d: -f2) root@localhost
+kubeconfig:
+	@docker compose -f ${COMPOSE_FILE} exec -T admin sed "s|https://k8s-control-plane:6443|https://127.0.0.1:$$(docker compose -f ${COMPOSE_FILE} port k8s-control-plane 6443 | cut -d: -f2)|" /root/.kube/config > k8s/kubeconfig.local
+	@echo "export KUBECONFIG=$(CURDIR)/k8s/kubeconfig.local"
 
-login: docker-check
-	docker compose -f ${COMPOSE_FILE} exec -it $(container) /bin/bash
-
-install:
-	pip install -e .
-
-test:
-	tox
-
-install-docs:
-	pip install -e ".[docs]"
-
-build-docs: install-docs
-	$(MAKE) -C docs html
-
-clean: clean-docs
-
-clean-docs: install-docs
-	$(MAKE) -C docs clean
-
-open-docs:
-	open docs/_build/html/index.html
+k8s/.env.secrets.local:
+	@printf '# kubeadm bootstrap token shared by the control plane and the workers. Generated.\nK8S_TOKEN=%s\n' "$$(openssl rand -hex 3).$$(openssl rand -hex 8)" > $@
+${SSH_KEY}:
+	@mkdir -p admin/ssh
+	@ssh-keygen -q -t ed25519 -N "" -C hpc-lab -f ${SSH_KEY}
