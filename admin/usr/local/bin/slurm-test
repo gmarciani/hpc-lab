@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Submit a hello world batch job from the head node; its output lands in the
+# shared directory, which every compute and login node mounts.
+. /usr/local/lib/hpc-lab.sh  # sets -euo pipefail for this script
+SHARED_DIR=/shared
+
+phase "Submitting a hello world batch job"
+job=$(slurm-exec sbatch --parsable --wait --job-name hello \
+        --chdir "${SHARED_DIR}" --output "${SHARED_DIR}/hello-%j.out" \
+        --wrap 'echo "Hello World from $(hostname)"' | cut -d';' -f1)
+info "job ${job} finished"
+detail=$(slurm-exec scontrol show job "${job}" --json)
+state=$(jq -r '.jobs[0].job_state[0]' <<<"${detail}")
+node=$(jq -r '.jobs[0].nodes' <<<"${detail}")
+# Slurm reports the output path as submitted, with %j still to be expanded.
+output=$(jq -r --arg id "${job}" '.jobs[0].standard_output | gsub("%j"; $id)' <<<"${detail}")
+echo "JobId=${job} JobState=${state} NodeList=${node} StdOut=${output}"
+echo "--- ${output} read from the login node:"
+slurm-exec login cat "${output}"
+[ "${state}" = COMPLETED ] || fail "job ${job} ended in state ${state}"
+info "job ${job} completed"

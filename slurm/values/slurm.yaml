@@ -1,0 +1,48 @@
+# Slurm cluster configuration for the Slinky slurm chart. Schema:
+# https://github.com/SlinkyProject/slurm-operator/blob/v1.2.3/helm/slurm/README.md
+clusterName: hpc-lab
+
+# /shared is a directory present on every Kubernetes node (a Docker volume in
+# docker-compose.yaml, mode 1777 like /tmp), mounted into the login and compute
+# pods as the cluster-wide shared directory.
+loginsets:
+  hpc:
+    replicas: 1
+    service:
+      spec:
+        type: ClusterIP
+    login:
+      volumeMounts:
+        - name: shared
+          mountPath: /shared
+    podSpec:
+      volumes:
+        - name: shared
+          hostPath:
+            path: /shared
+            type: Directory
+
+nodesets:
+  cpu:
+    replicas: 2
+    slurmd:
+      resources:
+        requests:
+          cpu: "1"
+          memory: 1Gi
+        limits:
+          cpu: "2"
+          memory: 2Gi
+      volumeMounts:
+        - name: shared
+          mountPath: /shared
+    podSpec:
+      volumes:
+        - name: shared
+          hostPath:
+            path: /shared
+            type: Directory
+
+partitions:
+  all:
+    enabled: true

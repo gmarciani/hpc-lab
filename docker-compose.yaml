@@ -80,6 +80,7 @@ services:
     volumes:
       - kubeconfig:/root/.kube
       - ./admin/ssh:/hpc-lab/ssh:ro
+      - ./slurm:/hpc-lab/slurm:ro
     depends_on:
       - k8s-control-plane
 
