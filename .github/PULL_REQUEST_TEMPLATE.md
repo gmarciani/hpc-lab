@@ -18,5 +18,4 @@
 - Check if documentation is impacted by this change.
 
 By submitting this pull request, I confirm that my contribution is compliant with
-the [contributing guidelines](https://github.com/gmarciani/hpc-lab/blob/main/CONTRIBUTING.md)
-and the [LICENSE](https://github.com/gmarciani/hpc-lab/blob/main/LICENSE).
+the [contributing guidelines](https://github.com/gmarciani/hpc-lab/blob/main/CONTRIBUTING.md) and the [LICENSE](https://github.com/gmarciani/hpc-lab/blob/main/LICENSE).
