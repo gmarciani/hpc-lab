@@ -27,7 +27,7 @@ setup:
 	bash resources/tools/setup-dev-environment.sh
 build: docker-check
 	docker compose -f ${COMPOSE_FILE} build $(service)
-start: build start-k8s
+start: build start-k8s start-slurm
 	@$(MAKE) describe
 stop: docker-check
 	docker compose -f ${COMPOSE_FILE} stop $(service)
@@ -44,6 +44,7 @@ describe:
 	@$(MAKE) show
 	-docker compose -f ${COMPOSE_FILE} exec -T admin kubectl get nodes
 	-docker compose -f ${COMPOSE_FILE} exec -T admin kubectl get pods --all-namespaces
+	-docker compose -f ${COMPOSE_FILE} exec -T admin slurm-exec sinfo
 get-logs:
 	docker compose -f ${COMPOSE_FILE} logs $(service) | tail -n 500
 login:
@@ -56,9 +57,21 @@ stop-k8s: docker-check
 	docker compose -f ${COMPOSE_FILE} stop
 test-k8s:
 	docker compose -f ${COMPOSE_FILE} exec -T admin k8s-test
+start-slurm: docker-check
+	docker compose -f ${COMPOSE_FILE} exec -T admin slurm-deploy
+stop-slurm: docker-check
+	docker compose -f ${COMPOSE_FILE} exec -T admin slurm-destroy
+test-slurm:
+	docker compose -f ${COMPOSE_FILE} exec -T admin slurm-test
 
 ssh-admin:
 	ssh ${SSH_OPTS} -p $$(docker compose -f ${COMPOSE_FILE} port admin 22 | cut -d: -f2) root@localhost
+ssh-slurm-login:
+	docker compose -f ${COMPOSE_FILE} exec -it admin slurm-shell login
+ssh-slurm-head:
+	docker compose -f ${COMPOSE_FILE} exec -it admin slurm-shell head
+ssh-slurm-compute:
+	docker compose -f ${COMPOSE_FILE} exec -it admin slurm-shell compute $(or $(node),cpu-0)
 kubeconfig:
 	@docker compose -f ${COMPOSE_FILE} exec -T admin sed "s|https://k8s-control-plane:6443|https://127.0.0.1:$$(docker compose -f ${COMPOSE_FILE} port k8s-control-plane 6443 | cut -d: -f2)|" /root/.kube/config > k8s/kubeconfig.local
 	@echo "export KUBECONFIG=$(CURDIR)/k8s/kubeconfig.local"
