@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Health check of the Kubernetes cluster: API server readiness and node status.
+. /usr/local/lib/hpc-lab.sh  # sets -euo pipefail for this script
+phase "Kubernetes health check"
+kubectl get --raw '/readyz?verbose' | tail -1
+kubectl wait --for=condition=Ready nodes --all --timeout=60s >/dev/null
+kubectl get nodes
+info "cluster healthy"

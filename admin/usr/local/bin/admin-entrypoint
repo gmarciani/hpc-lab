@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# The only runtime step: the lab public key is generated per machine by the
+# Makefile, gitignored and bind-mounted, so it does not exist at image build time.
+set -euo pipefail
+install -d -m 700 /root/.ssh
+install -m 600 "${LAB_DIR}/ssh/id_ed25519.pub" /root/.ssh/authorized_keys
+exec /usr/sbin/sshd -D -e
