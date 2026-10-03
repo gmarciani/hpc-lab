@@ -1,6 +1,13 @@
 # Generic
 .ignore
+.DS_Store
 
 # IntelliJ
 .idea
 *.iml
+
+# Generated at runtime: kubeconfigs, SSH keys, kubeadm token
+out/
+
+# Sphinx build output
+docs/_build/
