@@ -2,9 +2,9 @@ version: 2
 updates:
   - package-ecosystem: "docker"
     directories:
-      - "/services/control-plane"
-      - "/services/worker"
-      - "/services/admin"
+      - "/k8s/control-plane"
+      - "/k8s/worker"
+      - "/admin"
     schedule:
       interval: "monthly"
   - package-ecosystem: "github-actions"

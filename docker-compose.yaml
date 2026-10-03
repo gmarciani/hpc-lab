@@ -1,6 +1,88 @@
 name: hpc-lab
-services: []
 
-volumes: {}
+# Settings shared by the three Kubernetes node services. Compose ignores
+# top-level keys starting with `x-`; `&k8s-node` is a YAML anchor that each node
+# service merges in with `<<: *k8s-node`. The flags are the ones the kind CLI
+# uses for kindest/node. State lives in anonymous volumes so a container
+# recreate keeps the cluster.
+x-k8s-node: &k8s-node
+  # The node runs systemd, containerd and kubelet, which mount filesystems,
+  # manage cgroups and create network namespaces for the pods.
+  privileged: true
+  # Private cgroup namespace: kubelet and systemd see their own cgroup tree
+  # instead of the whole Docker host's.
+  cgroup: private
+  restart: on-failure:1
+  # Default seccomp and AppArmor profiles block syscalls that kubelet and the
+  # container runtime need, such as mount and keyctl.
+  security_opt:
+    - seccomp:unconfined
+    - apparmor:unconfined
+  # systemd wants a writable /run and the runtime uses /tmp for scratch files;
+  # both must not persist across restarts.
+  tmpfs:
+    - /tmp
+    - /run
 
-networks: {}
+services:
+  k8s-control-plane:
+    <<: *k8s-node
+    build:
+      context: k8s/control-plane
+    # Docker's default hostname is the container id; kubelet names the node after it.
+    hostname: k8s-control-plane
+    ports:
+      - "127.0.0.1:6443:6443"  # Kubernetes API
+    volumes:
+      - /var
+      - /etc/kubernetes
+      - /lib/modules:/lib/modules:ro
+      - ./k8s/.env.secrets.local:/etc/hpc-lab/k8s.secrets.env:ro
+      - kubeconfig:/output
+      - shared:/shared
+
+  k8s-worker-1:
+    <<: *k8s-node
+    build:
+      context: k8s/worker
+    hostname: k8s-worker-1
+    depends_on:
+      - k8s-control-plane
+    volumes:
+      - /var
+      - /etc/kubernetes
+      - /lib/modules:/lib/modules:ro
+      - ./k8s/.env.secrets.local:/etc/hpc-lab/k8s.secrets.env:ro
+      - shared:/shared
+
+  k8s-worker-2:
+    <<: *k8s-node
+    build:
+      context: k8s/worker
+    hostname: k8s-worker-2
+    depends_on:
+      - k8s-control-plane
+    volumes:
+      - /var
+      - /etc/kubernetes
+      - /lib/modules:/lib/modules:ro
+      - ./k8s/.env.secrets.local:/etc/hpc-lab/k8s.secrets.env:ro
+      - shared:/shared
+
+  admin:
+    build:
+      context: admin
+    env_file:
+      - admin/.env.local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:2200:22"
+    volumes:
+      - kubeconfig:/root/.kube
+      - ./admin/ssh:/hpc-lab/ssh:ro
+    depends_on:
+      - k8s-control-plane
+
+volumes:
+  kubeconfig:  # admin kubeconfig, written by the control plane and read by the admin container
+  shared:      # /shared on every Kubernetes node, mounted by the Slurm pods as the cluster-wide shared directory

@@ -6,8 +6,10 @@
 .idea
 *.iml
 
-# Generated at runtime: kubeconfigs, SSH keys, kubeadm token
-out/
+# AI
+.superpowers/
 
-# Sphinx build output
-docs/_build/
+# Secrets and generated files
+.env.secrets.*
+admin/ssh/
+k8s/kubeconfig.local
