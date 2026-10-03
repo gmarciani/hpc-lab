@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+. /usr/local/lib/hpc-lab.sh
+load_env "${LAB_DIR}/slurm/.env.local"
+
+phase "cert-manager ${CERT_MANAGER_VERSION}"
+helm_install cert-manager oci://quay.io/jetstack/charts/cert-manager "${CERT_MANAGER_VERSION:?}" cert-manager \
+  --set crds.enabled=true --wait --timeout 10m
+
+phase "Slinky slurm-operator ${SLINKY_VERSION}"
+helm_install slurm-operator-crds oci://ghcr.io/slinkyproject/charts/slurm-operator-crds "${SLINKY_VERSION:?}" slinky
+helm_install slurm-operator oci://ghcr.io/slinkyproject/charts/slurm-operator "${SLINKY_VERSION:?}" slinky --wait --timeout 10m
+
+phase "Slurm cluster (chart ${SLINKY_VERSION})"
+# slurm/slurm.conf is appended to the generated slurm.conf through controller.extraConf.
+helm_install slurm oci://ghcr.io/slinkyproject/charts/slurm "${SLINKY_VERSION:?}" slurm \
+  -f "${LAB_DIR}/slurm/values/slurm.yaml" \
+  --set-file "controller.extraConf=${LAB_DIR}/slurm/slurm.conf" --timeout 15m
+
+# Ready means Slurm itself says so: every compute node registered and idle.
+expected=$(kubectl -n slurm get nodesets -o jsonpath='{.items[*].spec.replicas}' | awk '{ for (i = 1; i <= NF; i++) n += $i; print n + 0 }')
+info "waiting for ${expected} idle Slurm nodes"
+timeout 900 bash -c "until [ \"\$(slurm-exec sinfo -h -N -t idle -o %n 2>/dev/null | wc -l)\" -eq ${expected} ]; do sleep 10; done" \
+  || { kubectl -n slurm get pods; fail "Slurm nodes not idle after 900s"; }
+
+phase "Slurm is up"
+slurm-exec sinfo

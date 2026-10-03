@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+. /usr/local/lib/hpc-lab.sh
+phase "Removing the Slurm cluster"
+if helm -n slurm status slurm >/dev/null 2>&1; then
+  helm -n slurm uninstall slurm --wait --timeout 10m
+  # The operator deletes the pods of its custom resources asynchronously.
+  wait_pods_gone slurm 'app.kubernetes.io/name in (slurmctld,slurmrestd,slurmd,login)' 600
+fi
+info "Slurm layer removed; operator, cert-manager and volumes kept"
