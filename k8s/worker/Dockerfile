@@ -1,6 +1,6 @@
 # kindest/node bundles the official kubeadm, kubelet and kubectl with systemd and
 # containerd; see "Node image" in DEVELOPMENT.md for why and for the trade-off.
-FROM kindest/node:v1.36.4
+FROM kindest/node:v1.37.0
 
 # The folder layout mirrors the destination paths in the image.
 COPY etc/systemd/system/ /etc/systemd/system/
