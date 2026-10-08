@@ -1,34 +1,61 @@
 name: hpc-lab
 
-# Settings shared by the three Kubernetes node services. Compose ignores
-# top-level keys starting with `x-`; `&k8s-node` is a YAML anchor that each node
-# service merges in with `<<: *k8s-node`. The flags are the ones the kind CLI
-# uses for kindest/node. State lives in anonymous volumes so a container
-# recreate keeps the cluster.
+# Settings shared by the Kubernetes node services (a YAML anchor each one
+# merges with `<<:`). The flags are the ones the kind CLI uses for kindest/node;
+# state lives in anonymous volumes so a container recreate keeps the cluster.
+# Chef configures the image at build and runs kubeadm on first boot; the cookbook
+# is mounted so a runtime converge uses the working copy.
 x-k8s-node: &k8s-node
-  # The node runs systemd, containerd and kubelet, which mount filesystems,
-  # manage cgroups and create network namespaces for the pods.
+  build: k8s
+  # systemd, containerd and kubelet mount filesystems, manage cgroups and create
+  # network namespaces; the default seccomp and AppArmor profiles block them.
   privileged: true
-  # Private cgroup namespace: kubelet and systemd see their own cgroup tree
-  # instead of the whole Docker host's.
   cgroup: private
-  restart: on-failure:1
-  # Default seccomp and AppArmor profiles block syscalls that kubelet and the
-  # container runtime need, such as mount and keyctl.
   security_opt:
     - seccomp:unconfined
     - apparmor:unconfined
-  # systemd wants a writable /run and the runtime uses /tmp for scratch files;
-  # both must not persist across restarts.
+  restart: on-failure:1
+  # systemd wants a writable /run and the runtime scratches in /tmp; neither persists.
   tmpfs:
     - /tmp
     - /run
 
+x-k8s-worker: &k8s-worker
+  <<: *k8s-node
+  depends_on:
+    - k8s-control-plane
+  volumes:
+    - /var
+    - /etc/kubernetes
+    - /lib/modules:/lib/modules:ro
+    - ./k8s/.env.secrets.local:/opt/hpc-lab/k8s.secrets.env:ro
+    - ./k8s/cookbook:/opt/hpc-lab/chef/cookbooks/hpc-lab-k8s:ro
+    - shared:/shared
+
 services:
+  admin:
+    build: admin
+    restart: unless-stopped
+    # The entrypoint converges the cookbook (packages, kubectl, helm, lab scripts)
+    # before starting sshd, so a listening sshd means the lab scripts are installed;
+    # `make start-k8s` waits for it with `docker compose up --wait`.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/22"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+    ports:
+      - "127.0.0.1:2200:22"
+    volumes:
+      - kubeconfig:/root/.kube
+      - ./admin/ssh:/opt/hpc-lab/ssh:ro
+      - ./admin/cookbook:/opt/hpc-lab/chef/cookbooks/hpc-lab-admin:ro
+      - ./slurm/cookbook:/opt/hpc-lab/chef/cookbooks/hpc-lab-slurm:ro
+    depends_on:
+      - k8s-control-plane
+
   k8s-control-plane:
     <<: *k8s-node
-    build:
-      context: k8s/control-plane
     # Docker's default hostname is the container id; kubelet names the node after it.
     hostname: k8s-control-plane
     ports:
@@ -37,52 +64,28 @@ services:
       - /var
       - /etc/kubernetes
       - /lib/modules:/lib/modules:ro
-      - ./k8s/.env.secrets.local:/etc/hpc-lab/k8s.secrets.env:ro
+      - ./k8s/.env.secrets.local:/opt/hpc-lab/k8s.secrets.env:ro
+      - ./k8s/cookbook:/opt/hpc-lab/chef/cookbooks/hpc-lab-k8s:ro
       - kubeconfig:/output
       - shared:/shared
 
   k8s-worker-1:
-    <<: *k8s-node
-    build:
-      context: k8s/worker
+    <<: *k8s-worker
     hostname: k8s-worker-1
-    depends_on:
-      - k8s-control-plane
-    volumes:
-      - /var
-      - /etc/kubernetes
-      - /lib/modules:/lib/modules:ro
-      - ./k8s/.env.secrets.local:/etc/hpc-lab/k8s.secrets.env:ro
-      - shared:/shared
 
   k8s-worker-2:
-    <<: *k8s-node
-    build:
-      context: k8s/worker
+    <<: *k8s-worker
     hostname: k8s-worker-2
-    depends_on:
-      - k8s-control-plane
-    volumes:
-      - /var
-      - /etc/kubernetes
-      - /lib/modules:/lib/modules:ro
-      - ./k8s/.env.secrets.local:/etc/hpc-lab/k8s.secrets.env:ro
-      - shared:/shared
 
-  admin:
-    build:
-      context: admin
-    env_file:
-      - admin/.env.local
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:2200:22"
-    volumes:
-      - kubeconfig:/root/.kube
-      - ./admin/ssh:/hpc-lab/ssh:ro
-      - ./slurm:/hpc-lab/slurm:ro
-    depends_on:
-      - k8s-control-plane
+  # The Slinky operator runs at most one slurmd pod per Kubernetes node, so there
+  # is one worker per Slurm compute node: 2 in partition main, 2 in main-gpu.
+  k8s-worker-3:
+    <<: *k8s-worker
+    hostname: k8s-worker-3
+
+  k8s-worker-4:
+    <<: *k8s-worker
+    hostname: k8s-worker-4
 
 volumes:
   kubeconfig:  # admin kubeconfig, written by the control plane and read by the admin container

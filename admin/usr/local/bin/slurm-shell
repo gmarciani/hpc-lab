@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-# Open a shell on a Slurm node: slurm-shell head | login | compute NODE
-. /usr/local/lib/hpc-lab.sh
-case "${1:-}" in
-  head|login) exec slurm-exec "$1" bash ;;
-  compute)    exec slurm-exec compute "${2:?usage: slurm-shell compute NODE}" bash ;;
-  *)          fail "usage: slurm-shell head | login | compute NODE" ;;
-esac

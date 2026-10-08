@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Open a shell on a Slurm node: slurm-shell head | login | compute NODE
+# kubectl exec starts in the image's working directory (/tmp in the Slinky
+# images), so the shell moves to the user's home and runs as a login shell. The
+# controller runs as user slurm, whose home does not exist: it falls back to /.
+. /usr/local/lib/hpc-lab.sh
+# shellcheck disable=SC2016 # $HOME expands on the Slurm node, not here.
+shell=(sh -c 'cd "$HOME" 2>/dev/null || cd /; exec bash -l')
+case "${1:-}" in
+  head|login) exec slurm-exec "$1" "${shell[@]}" ;;
+  compute)    exec slurm-exec compute "${2:?usage: slurm-shell compute NODE}" "${shell[@]}" ;;
+  *)          fail "usage: slurm-shell head | login | compute NODE" ;;
+esac
