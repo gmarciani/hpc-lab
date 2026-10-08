@@ -1,0 +1,7 @@
+name 'hpc-lab-slurm'
+maintainer 'Giacomo Marciani'
+license 'MIT'
+description 'Slurm layer on Kubernetes: cert-manager, the Slinky operator and the Slurm chart'
+version '1.0.0'
+chef_version '>= 18.0'
+supports 'redhat'

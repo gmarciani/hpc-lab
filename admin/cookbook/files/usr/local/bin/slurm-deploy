@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Deploy the Slurm layer on Kubernetes (recipe hpc-lab-slurm::deploy), then show it.
+. /usr/local/lib/hpc-lab.sh
+cinc-client -c "${HPC_LAB_HOME}/chef/client.rb" -o 'recipe[hpc-lab-slurm::deploy]'
+phase "Slurm is up"
+slurm-exec sinfo

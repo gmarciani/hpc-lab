@@ -1,0 +1,11 @@
+# Shared helpers for admin scripts. Source it; do not execute it.
+set -euo pipefail
+
+# Lab folder: chef/ (client.rb and the cookbooks), ssh/ (the lab keypair) and
+# slurm/ (the slurm chart values and slurm.conf).
+export HPC_LAB_HOME=<%= @hpc_lab_home %>
+
+function phase() { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
+function info()  { printf '\033[0;34m[INFO]\033[0m %s\n' "$*"; }
+function error() { printf '\033[0;31m[ERROR]\033[0m %s\n' "$*" >&2; }
+function fail()  { error "$*"; exit 1; }

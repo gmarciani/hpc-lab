@@ -1,0 +1,17 @@
+# First boot of a node: kubeadm init on the control plane, kubeadm join on the
+# workers, by hostname. Logs to the journal; a no-op once kubelet is configured.
+[Unit]
+Description=hpc-lab Kubernetes node bootstrap (first boot only)
+After=containerd.service network-online.target
+Wants=containerd.service network-online.target
+ConditionPathExists=!/etc/kubernetes/kubelet.conf
+
+[Service]
+Type=oneshot
+# k8s/.env.secrets.local (K8S_TOKEN), mounted by docker-compose.yaml.
+EnvironmentFile=<%= @hpc_lab_home %>/k8s.secrets.env
+ExecStart=/usr/bin/cinc-client -c <%= @hpc_lab_home %>/chef/client.rb -o recipe[hpc-lab-k8s]
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Converge the admin cookbook (packages, kubectl, helm, sshd, lab scripts, SSH
+# key), then run sshd. HPC_LAB_HOME is set by the Dockerfile.
+set -euo pipefail
+cinc-client -c "${HPC_LAB_HOME}/chef/client.rb" -o 'recipe[hpc-lab-admin]'
+# -D keeps sshd in the foreground, so it stays the container's main process and
+# the container lives as long as sshd does; -e sends its log to stderr instead of
+# syslog, which the container does not run, so it shows in `docker logs`.
+exec /usr/sbin/sshd -D -e

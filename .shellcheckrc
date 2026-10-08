@@ -1,0 +1,4 @@
+# The lab scripts source /usr/local/lib/hpc-lab.sh, rendered from a template
+# (admin/cookbook/templates) when the admin container starts: there is no file
+# to follow at lint time.
+disable=SC1091

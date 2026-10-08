@@ -1,0 +1,24 @@
+# Slinky slurm chart values, from the hpc-lab-slurm attributes.
+# /shared is the compose volume present on every node, mounted into the pods.
+clusterName: <%= @slurm['cluster_name'] %>
+loginsets:
+<% @slurm['loginsets'].each do |name, set| -%>
+  <%= name %>:
+    replicas: <%= set['replicas'] %>
+    service: { spec: { type: ClusterIP } }
+    login: { volumeMounts: [{ name: shared, mountPath: /shared }] }
+    podSpec: { volumes: [{ name: shared, hostPath: { path: /shared, type: Directory } }] }
+<% end -%>
+nodesets:
+<% @slurm['nodesets'].each do |name, set| -%>
+  <%= name %>:
+    replicas: <%= set['replicas'] %>
+    slurmd:
+      resources: <%= set['resources'].to_json %>
+      volumeMounts: [{ name: shared, mountPath: /shared }]
+    podSpec: { volumes: [{ name: shared, hostPath: { path: /shared, type: Directory } }] }
+<% if set['features'] -%>
+    extraConfMap: { Features: <%= set['features'].to_a.to_json %> }
+<% end -%>
+<% end -%>
+partitions: <%= @slurm['partitions'].to_json %>

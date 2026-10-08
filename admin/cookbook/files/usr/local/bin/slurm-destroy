@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Remove the Slurm cluster, keeping the operator, cert-manager and the volumes.
+. /usr/local/lib/hpc-lab.sh
+exec cinc-client -c "${HPC_LAB_HOME}/chef/client.rb" -o 'recipe[hpc-lab-slurm::destroy]'

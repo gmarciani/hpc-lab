@@ -1,0 +1,7 @@
+name 'hpc-lab-k8s'
+maintainer 'Giacomo Marciani'
+license 'MIT'
+description 'Kubernetes nodes of the lab: kubeadm configuration, first-boot init and join'
+version '1.0.0'
+chef_version '>= 18.0'
+supports 'debian'

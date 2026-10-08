@@ -1,0 +1,4 @@
+# Build context of admin/Dockerfile: client.rb and the entrypoint only.
+*
+!client.rb
+!admin-entrypoint
