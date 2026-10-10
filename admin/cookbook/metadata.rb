@@ -1,0 +1,7 @@
+name 'hpc-lab-admin'
+maintainer 'Giacomo Marciani'
+license 'MIT'
+description 'Admin node of the lab: sshd, kubectl, helm and the lab scripts'
+version '1.0.0'
+chef_version '>= 18.0'
+supports 'redhat'

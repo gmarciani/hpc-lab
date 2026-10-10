@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+. /usr/local/lib/hpc-lab.sh
+NODES=5  # one control plane and four workers in docker-compose.yaml
+phase "Waiting for the Kubernetes cluster"
+timeout 600 bash -c "until [ -s /root/.kube/config ]; do sleep 2; done" \
+  || fail "no kubeconfig after 600s; check: docker compose exec k8s-control-plane journalctl -u k8s-bootstrap"
+timeout 600 bash -c "until [ \$(kubectl get nodes --no-headers 2>/dev/null | wc -l) -ge ${NODES} ]; do sleep 5; done" \
+  || { kubectl get nodes || true; fail "not all ${NODES} nodes registered after 600s"; }
+kubectl wait --for=condition=Ready nodes --all --timeout=300s
+kubectl -n kube-system rollout status deployment/coredns --timeout=300s
+kubectl get nodes

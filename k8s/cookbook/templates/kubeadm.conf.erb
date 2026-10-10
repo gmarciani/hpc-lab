@@ -1,0 +1,53 @@
+# kubeadm configuration, from the hpc-lab-k8s attributes. One YAML document per
+# kind: https://kubernetes.io/docs/reference/config-api/kubeadm-config.v1beta4/
+# The node is a container, not a host: the settings below that differ from the
+# kubeadm defaults are the ones kind uses for the same kindest/node image.
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+kubernetesVersion: <%= @kubernetes_version %>
+clusterName: <%= @cluster_name %>
+controlPlaneEndpoint: "<%= @control_plane_host %>:<%= @api_port %>"
+apiServer:
+  certSANs: [localhost, "127.0.0.1", "<%= @control_plane_host %>"]
+networking:
+  podSubnet: "<%= @pod_subnet %>"
+  serviceSubnet: "<%= @service_subnet %>"
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+nodeRegistration:
+  criSocket: "unix:///run/containerd/containerd.sock"
+# The preflight checks assume a real host: they read the kernel configuration,
+# check swap and write sysctls, which fail or are not allowed in a container.
+# kubeadm join skips them too (recipes/worker.rb).
+skipPhases:
+  - preflight
+---
+# Stored in the cluster by kubeadm; workers fetch it when they join.
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+# systemd is PID 1 of the node and containerd uses its cgroup driver
+# (SystemdCgroup); kubelet must use the same driver.
+cgroupDriver: systemd
+# Pods go under a dedicated /kubelet cgroup, created by the kindest/node
+# entrypoint, apart from the node's own services (systemd, containerd, kubelet).
+cgroupRoot: /kubelet
+# The node shares the swap of the Docker host (e.g. the Docker Desktop VM);
+# kubelet refuses to start on a host with swap unless this is false.
+failSwapOn: false
+# The node sees the disk of the Docker host, shared with every other container:
+# kubelet would garbage-collect the images preloaded in kindest/node and evict
+# pods when that disk fills up, for usage it does not own. Image GC at 100% and
+# eviction thresholds at 0% turn disk pressure handling off.
+imageGCHighThresholdPercent: 100
+evictionHard:
+  nodefs.available: "0%"
+  nodefs.inodesFree: "0%"
+  imagefs.available: "0%"
+---
+apiVersion: kubeproxy.config.k8s.io/v1alpha1
+kind: KubeProxyConfiguration
+conntrack:
+  # 0 leaves nf_conntrack_max as it is: the sysctl is global to the Docker host,
+  # read-only in a container, and kube-proxy fails when it cannot set it.
+  maxPerCore: 0

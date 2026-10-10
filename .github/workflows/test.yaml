@@ -1,0 +1,44 @@
+name: 🧪 Test
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  quality:
+    name: Lint the ${{ matrix.cookbook }} cookbook
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cookbook: [admin, k8s, slurm]
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Run Cookstyle
+      run: make lint-chef cookbook=${{ matrix.cookbook }}
+
+  shell:
+    name: Lint the shell scripts
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Run ShellCheck
+      run: make lint-shell
+
+  test:
+    name: Unit tests of the ${{ matrix.cookbook }} cookbook
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cookbook: [admin, k8s, slurm]
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Run ChefSpec
+      run: make test-chef cookbook=${{ matrix.cookbook }}

@@ -1,0 +1,14 @@
+# Extra slurm.conf settings, from the hpc-lab-slurm slurm_conf attributes,
+# appended by the Slinky operator to the configuration it generates
+# (controller.extraConf). Reference: https://slurm.schedmd.com/slurm.conf.html
+
+# Seconds a finished job stays visible to scontrol and squeue.
+MinJobAge=<%= @conf['MinJobAge'] %>
+
+# Backfill scheduling: start lower-priority jobs when they do not delay the
+# expected start of higher-priority ones.
+SchedulerType=<%= @conf['SchedulerType'] %>
+
+# Cores and memory are consumable resources, allocated per job on a node.
+SelectType=<%= @conf['SelectType'] %>
+SelectTypeParameters=<%= @conf['SelectTypeParameters'] %>
