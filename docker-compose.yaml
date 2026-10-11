@@ -20,18 +20,6 @@ x-k8s-node: &k8s-node
     - /tmp
     - /run
 
-x-k8s-worker: &k8s-worker
-  <<: *k8s-node
-  depends_on:
-    - k8s-control-plane
-  volumes:
-    - /var
-    - /etc/kubernetes
-    - /lib/modules:/lib/modules:ro
-    - ./k8s/.env.secrets.local:/opt/hpc-lab/k8s.secrets.env:ro
-    - ./k8s/cookbook:/opt/hpc-lab/chef/cookbooks/hpc-lab-k8s:ro
-    - shared:/shared
-
 services:
   admin:
     build: admin
@@ -69,23 +57,23 @@ services:
       - kubeconfig:/output
       - shared:/shared
 
-  k8s-worker-1:
-    <<: *k8s-worker
-    hostname: k8s-worker-1
-
-  k8s-worker-2:
-    <<: *k8s-worker
-    hostname: k8s-worker-2
-
-  # The Slinky operator runs at most one slurmd pod per Kubernetes node, so there
-  # is one worker per Slurm compute node: 2 in partition main, 2 in main-gpu.
-  k8s-worker-3:
-    <<: *k8s-worker
-    hostname: k8s-worker-3
-
-  k8s-worker-4:
-    <<: *k8s-worker
-    hostname: k8s-worker-4
+  # The workers are replicas of this one service: `make start-k8s workers=N`
+  # scales it. Each replica joins as k8s-worker-<index>, its compose container
+  # index. The Slinky operator runs at most one slurmd pod per Kubernetes node,
+  # so there is one worker per Slurm compute node: 2 in main, 2 in main-gpu.
+  k8s-worker:
+    <<: *k8s-node
+    deploy:
+      replicas: 4
+    depends_on:
+      - k8s-control-plane
+    volumes:
+      - /var
+      - /etc/kubernetes
+      - /lib/modules:/lib/modules:ro
+      - ./k8s/.env.secrets.local:/opt/hpc-lab/k8s.secrets.env:ro
+      - ./k8s/cookbook:/opt/hpc-lab/chef/cookbooks/hpc-lab-k8s:ro
+      - shared:/shared
 
 volumes:
   kubeconfig:  # admin kubeconfig, written by the control plane and read by the admin container

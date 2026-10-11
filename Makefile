@@ -3,6 +3,11 @@ default: build
 COMPOSE_FILE="docker-compose.yaml"
 SSH_KEY=admin/ssh/id_ed25519
 SSH_OPTS=-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -i ${SSH_KEY}
+# Kubernetes workers, the replicas of the k8s-worker service: `workers=N` scales
+# them; otherwise the lab keeps the workers it has, 4 on a fresh start.
+WORKERS=$(or $(workers),$(shell docker compose -f ${COMPOSE_FILE} ps --all --quiet k8s-worker 2>/dev/null | wc -l | awk '$$1 > 0 { print $$1 }'),4)
+# `service=k8s-worker-N` is replica N of the k8s-worker service.
+SERVICE=$(if $(filter k8s-worker-%,$(service)),--index $(service:k8s-worker-%=%) k8s-worker,$(service))
 
 # Cookstyle and ChefSpec run in the Cinc Workstation image; no Ruby on the host.
 # `cookbook=admin` (or k8s, slurm) restricts lint-chef and test-chef to one cookbook.
@@ -56,13 +61,16 @@ describe:
 	-docker compose -f ${COMPOSE_FILE} exec -T admin kubectl get pods --all-namespaces
 	-docker compose -f ${COMPOSE_FILE} exec -T admin slurm-exec sinfo
 get-logs:
-	docker compose -f ${COMPOSE_FILE} logs $(service) | tail -n 500
+	docker compose -f ${COMPOSE_FILE} logs ${SERVICE} | tail -n 500
 login:
-	docker compose -f ${COMPOSE_FILE} exec -it $(service) /bin/bash
+	docker compose -f ${COMPOSE_FILE} exec -it ${SERVICE} /bin/bash
 
 start-k8s: docker-check k8s/.env.secrets.local ${SSH_KEY}
-	docker compose -f ${COMPOSE_FILE} up --detach --wait
-	docker compose -f ${COMPOSE_FILE} exec -T admin k8s-wait
+	@# Compose leaves the anonymous volumes of the replicas a scale-down removes;
+	@# remove the replicas beyond WORKERS, with their volumes, before scaling.
+	docker compose -f ${COMPOSE_FILE} ps --all --format '{{.Name}}' k8s-worker | awk -F- '$$NF > ${WORKERS}' | xargs -r docker rm --force --volumes
+	docker compose -f ${COMPOSE_FILE} up --detach --wait --scale k8s-worker=${WORKERS}
+	docker compose -f ${COMPOSE_FILE} exec -T admin k8s-wait ${WORKERS}
 stop-k8s: docker-check
 	docker compose -f ${COMPOSE_FILE} stop
 test-k8s:

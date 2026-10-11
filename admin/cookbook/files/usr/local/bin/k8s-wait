@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 . /usr/local/lib/hpc-lab.sh
-NODES=5  # one control plane and four workers in docker-compose.yaml
+WORKERS=${1:?usage: k8s-wait WORKERS}  # replicas of the k8s-worker service, named k8s-worker-1 to k8s-worker-WORKERS
+NODES=$((WORKERS + 1))                 # and the control plane
 phase "Waiting for the Kubernetes cluster"
 timeout 600 bash -c "until [ -s /root/.kube/config ]; do sleep 2; done" \
   || fail "no kubeconfig after 600s; check: docker compose exec k8s-control-plane journalctl -u k8s-bootstrap"
-timeout 600 bash -c "until [ \$(kubectl get nodes --no-headers 2>/dev/null | wc -l) -ge ${NODES} ]; do sleep 5; done" \
+# A scale-down removes the replicas with the highest index; their nodes stay NotReady until deleted.
+for node in $(kubectl get nodes -o name | sed -n 's|^node/k8s-worker-||p'); do
+  if [ "${node}" -gt "${WORKERS}" ]; then kubectl delete node "k8s-worker-${node}"; fi
+done
+timeout 600 bash -c "until [ \$(kubectl get nodes --no-headers 2>/dev/null | wc -l) -eq ${NODES} ]; do sleep 5; done" \
   || { kubectl get nodes || true; fail "not all ${NODES} nodes registered after 600s"; }
 kubectl wait --for=condition=Ready nodes --all --timeout=300s
 kubectl -n kube-system rollout status deployment/coredns --timeout=300s

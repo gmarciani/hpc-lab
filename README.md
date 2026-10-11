@@ -17,10 +17,8 @@ Everything is a docker-compose project driven by a Makefile.
 docker-compose project `hpc-lab`
 ├── admin               sshd + kubectl + helm + lab scripts (ubi9)
 ├── k8s-control-plane   upstream Kubernetes control plane (kindest/node, kubeadm init on first boot)
-├── k8s-worker-1        Kubernetes worker (kindest/node, kubeadm join on first boot)
-├── k8s-worker-2        Kubernetes worker
-├── k8s-worker-3        Kubernetes worker
-└── k8s-worker-4        Kubernetes worker, one per Slurm compute node
+└── k8s-worker          Kubernetes workers (kindest/node, kubeadm join on first boot), 4 replicas
+                        k8s-worker-1 to k8s-worker-4, one per Slurm compute node; `make start-k8s workers=N` scales them
 
 Kubernetes
 ├── cert-manager            namespace cert-manager
@@ -66,7 +64,7 @@ Its root authorized key is the lab keypair `admin/ssh/id_ed25519` (gitignored): 
 | Where | Command | How it works |
 |---|---|---|
 | Admin node | `make ssh-admin` | SSH as root on `localhost:2200` with the lab key (`ssh -i admin/ssh/id_ed25519 -p 2200 root@localhost`) |
-| Kubernetes node | `make login service=k8s-control-plane` (or `k8s-worker-1` to `k8s-worker-4`) | a bash shell through `docker compose exec`; the nodes run no SSH server |
+| Kubernetes node | `make login service=k8s-control-plane` (or a worker, `k8s-worker-1` to `k8s-worker-4`) | a bash shell through `docker compose exec`; the nodes run no SSH server |
 | Slurm login node | `make ssh-slurm-login` | a shell through `kubectl exec` from the admin node into the login pod |
 | Slurm head node (slurmctld) | `make ssh-slurm-head` | the same, into the controller pod |
 | Slurm compute node | `make ssh-slurm-compute node=cmpt-1` | the same, into the slurmd pod of that node |
@@ -86,6 +84,7 @@ slurm-exec squeue      # run a command on the Slurm head node
 
 ```shell
 make test-k8s       # health check of the Kubernetes cluster
+make start-k8s workers=6  # scale the Kubernetes workers
 make test-slurm     # submit a hello world batch job
 make lint           # lint the Chef cookbooks and the shell scripts
 make test           # lint, then unit-test the Chef cookbooks

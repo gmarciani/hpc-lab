@@ -20,7 +20,7 @@ For host `kubectl`, run `eval "$(make kubeconfig)"`.
 ## Project structure
 
 ```
-docker-compose.yaml     services: admin, k8s-control-plane, k8s-worker-1 to k8s-worker-4
+docker-compose.yaml     services: admin, k8s-control-plane, k8s-worker (4 replicas by default)
 Makefile                lifecycle, lint and test targets
 admin/
   Dockerfile            ubi9 + Cinc + the entrypoint, which converges the cookbook at container start
@@ -50,14 +50,15 @@ The k8s `image` recipe holds only what must exist before the first converge can 
 | Build images | `make build` (or `make build service=admin`); `make start` runs it first |
 | Start / stop / destroy everything | `make start` / `make stop` / `make clean` |
 | Start / stop the Kubernetes layer | `make start-k8s` / `make stop-k8s` |
+| Scale the Kubernetes workers | `make start-k8s workers=6` (later runs keep the count) |
 | Start / stop the Slurm layer | `make start-slurm` / `make stop-slurm` |
 | Health check of Kubernetes / hello world Slurm job | `make test-k8s` / `make test-slurm` |
 | Containers and URLs / both clusters | `make show` / `make describe` (also the last step of `make start`) |
-| Container logs | `make get-logs service=k8s-control-plane` |
-| First-boot (kubeadm) log of a node | `docker compose exec k8s-control-plane journalctl -u k8s-bootstrap` (same for a worker service) |
+| Container logs | `make get-logs service=k8s-control-plane` (a worker: `service=k8s-worker-2`) |
+| First-boot (kubeadm) log of a node | `docker compose exec k8s-control-plane journalctl -u k8s-bootstrap` (a worker: `exec --index 2 k8s-worker`) |
 | Lint the cookbooks / the shell scripts | `make lint-chef` / `make lint-shell` (both: `make lint`; one cookbook: `make lint-chef cookbook=slurm`) |
 | Unit-test the cookbooks | `make test-chef` (with `make lint`: `make test`; one cookbook: `make test-chef cookbook=slurm`) |
-| Shell in a compose service | `make login service=k8s-worker-1` |
+| Shell in a compose service | `make login service=admin` (a worker: `service=k8s-worker-2`, replica 2) |
 | SSH into admin | `make ssh-admin` |
 | Shell on the Slurm login / head / a compute node | `make ssh-slurm-login` / `make ssh-slurm-head` / `make ssh-slurm-compute node=cmpt-1` |
 | Generate the lab SSH keypair (kept if present) | `make ssh-key` |
@@ -89,26 +90,13 @@ kubectl get pods -A -o wide --field-selector spec.nodeName=k8s-worker-1  # pods 
 make test-k8s                                                    # API readiness and node status (host)
 ```
 
-Logs of a node, on the host: `docker compose exec k8s-worker-1 journalctl -u kubelet` for kubelet and `journalctl -u k8s-bootstrap` for its first boot (`kubeadm init` or `join`).
+Logs of a node, on the host: `docker compose exec --index 1 k8s-worker journalctl -u kubelet` for kubelet and `journalctl -u k8s-bootstrap` for its first boot (`kubeadm init` or `join`); `docker compose exec k8s-control-plane ...` for the control plane.
 
-**Add a worker.** Every node is a compose service; a new one joins the cluster on its first boot.
+**Scale the workers.** The workers are the replicas of the compose service `k8s-worker`, 4 by default; replica N joins the cluster as node `k8s-worker-N` on its first boot.
+On the host, `make start-k8s workers=6` scales the service and returns once every node is Ready; later `make start-k8s` and `make start` keep the current count, and `make clean` resets it to 4.
 
-1. In `docker-compose.yaml`, add a service after the last worker:
-
-   ```yaml
-   k8s-worker-5:
-     <<: *k8s-worker
-     hostname: k8s-worker-5
-   ```
-
-2. In `admin/cookbook/files/usr/local/bin/k8s-wait`, raise `NODES` to the new total (control plane included), so `make start-k8s` waits for the new node.
-3. On the host, run `make start-k8s`: compose builds and starts the new service, which runs `kubeadm join`, and the command returns once every node is Ready.
-
-**Remove a worker** (here `k8s-worker-5`):
-
-1. Move its pods away and remove it from the cluster: `kubectl drain k8s-worker-5 --ignore-daemonsets --delete-emptydir-data`, then `kubectl delete node k8s-worker-5`.
-2. On the host, remove the container and its volumes: `docker compose rm --stop --force --volumes k8s-worker-5`, then `docker image rm hpc-lab-k8s-worker-5`.
-3. Delete the service from `docker-compose.yaml` and lower `NODES` in `k8s-wait`.
+- **Scale up:** compose starts the new replicas, which run `kubeadm join`.
+- **Scale down:** compose removes the replicas with the highest index, and `make start-k8s` deletes their nodes from the cluster. Their pods are rescheduled on the remaining workers; to move them first, drain the nodes that will go, e.g. `kubectl drain k8s-worker-6 --ignore-daemonsets --delete-emptydir-data`.
 
 **Maintenance of a node:** `kubectl drain k8s-worker-1 --ignore-daemonsets --delete-emptydir-data` evicts its pods and `kubectl uncordon k8s-worker-1` returns it to service.
 The Slinky operator runs at most one slurmd pod per Kubernetes node: while a worker is drained, the Slurm compute node it hosted stays Pending unless another worker has no slurmd pod.
@@ -131,7 +119,7 @@ kubectl -n slurm get nodesets,loginsets,pods -o wide  # the Kubernetes side: nod
 
 **Scale compute nodes.** Change the `replicas` of a node set, e.g. `'cmpt' => { 'replicas' => 3, ... }`, then `make start-slurm`.
 Node names follow `<node set>-<ordinal>`, from 0; scaling down removes the highest ordinals.
-Each compute node needs its own Kubernetes worker: with more replicas in total than workers, the extra pods stay Pending, so add workers first.
+Each compute node needs its own Kubernetes worker: with more replicas in total than workers, the extra pods stay Pending, so add workers first (`make start-k8s workers=N`).
 After scaling down, the controller keeps the removed node as `drain*` (reason `slurm-operator: Pod is terminating`); delete the record with `slurm-exec scontrol delete nodename=cmpt-2`.
 
 **Add a partition on existing nodes.** A node may belong to several partitions. Add an entry to `partitions`:
@@ -148,7 +136,7 @@ After scaling down, the controller keeps the removed node as `drain*` (reason `s
 
 `configMap` takes any [partition parameter](https://slurm.schedmd.com/slurm.conf.html#SECTION_PARTITION-CONFIGURATION) (`Default`, `MaxTime`, `MaxNodes`, ...).
 
-**Add a partition on new nodes.** Add a node set to `nodesets`, e.g. `'cmpt-hm' => { 'replicas' => 1 }`, and a partition listing it, e.g. `'highmem' => { 'enabled' => true, 'nodesets' => %w(cmpt-hm) }`; add one Kubernetes worker per new node first.
+**Add a partition on new nodes.** Add a node set to `nodesets`, e.g. `'cmpt-hm' => { 'replicas' => 1 }`, and a partition listing it, e.g. `'highmem' => { 'enabled' => true, 'nodesets' => %w(cmpt-hm) }`; add one Kubernetes worker per new node first (`make start-k8s workers=N`).
 To remove a partition or a node set, delete its entry and run `make start-slurm`; the nodes of a removed node set stay as records in the controller, deleted with `slurm-exec scontrol delete nodename=<node>`.
 
 **Node features** are the `features` list of a node set (`%w(gpu)` on `cmpt-gpu`); jobs select them with `--constraint`.
