@@ -1,4 +1,7 @@
 labels:
+  - name: Admin
+    description: Changes to the admin node (admin/).
+    color: 5319E7
   - name: Backlog
     description: Added to team backlog.
     color: 1D76DB
@@ -29,6 +32,9 @@ labels:
   - name: Invalid
     description: This doesn't seem right.
     color: E4E669
+  - name: Kubernetes
+    description: Changes to the Kubernetes cluster (k8s/).
+    color: 326CE5
   - name: Question
     description: Further information is requested.
     color: D876E3
@@ -38,6 +44,9 @@ labels:
   - name: Skip Changelog Update
     description: Changing changelog is not required.
     color: 7FAC53
+  - name: Slurm
+    description: Changes to the Slurm cluster (slurm/).
+    color: 0E8A16
   - name: Test
     description: Improvements or additions related to testing.
     color: 95C8EA
@@ -51,6 +60,7 @@ labels:
 repos:
   - name: gmarciani/hpc-lab
     labels:
+      - Admin
       - Backlog
       - Bug
       - Dependencies
@@ -61,9 +71,11 @@ repos:
       - Feature Request
       - Help Wanted
       - Invalid
+      - Kubernetes
       - Question
       - Security
       - Skip Changelog Update
+      - Slurm
       - Test
       - Triage
       - Wont Fix

@@ -15,3 +15,15 @@ Developer Experience:
         - .github/**
         - .gitignore
         - .pre-commit
+Admin:
+  - changed-files:
+      - any-glob-to-any-file:
+        - admin/**
+Kubernetes:
+  - changed-files:
+      - any-glob-to-any-file:
+        - k8s/**
+Slurm:
+  - changed-files:
+      - any-glob-to-any-file:
+        - slurm/**
