@@ -29,6 +29,9 @@ jobs:
     - name: Run ShellCheck
       run: make lint-shell
 
+    - name: Check that every Makefile target has a help description
+      run: make lint-make
+
   test:
     name: Unit tests of the ${{ matrix.cookbook }} cookbook
     runs-on: ubuntu-latest
