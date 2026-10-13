@@ -1,0 +1,10 @@
+# cgroup.conf of the Slurm cluster, mounted next to slurm.conf in place of the one
+# the Slinky operator generates (chart value configFiles). With TaskPlugin=task/cgroup
+# in slurm.conf, a job that uses more memory than it asked for (--mem) is killed.
+# Reference: https://slurm.schedmd.com/cgroup.conf.html
+CgroupPlugin=cgroup/v2
+# The slurmd pods do not run systemd; slurmd manages its cgroups itself.
+IgnoreSystemd=yes
+ConstrainRAMSpace=yes
+# No swap either: the Docker host may have some, and a job would swap past its limit.
+ConstrainSwapSpace=yes

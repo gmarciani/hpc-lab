@@ -17,8 +17,8 @@ nodesets:
       resources: <%= set['resources'].to_json %>
       volumeMounts: [{ name: shared, mountPath: /shared }]
     podSpec: { volumes: [{ name: shared, hostPath: { path: /shared, type: Directory } }] }
-<% if set['features'] -%>
-    extraConfMap: { Features: <%= set['features'].to_a.to_json %> }
+<% unless @node_conf[name].empty? -%>
+    extraConfMap: <%= @node_conf[name].to_json %>
 <% end -%>
 <% end -%>
 partitions: <%= @slurm['partitions'].to_json %>

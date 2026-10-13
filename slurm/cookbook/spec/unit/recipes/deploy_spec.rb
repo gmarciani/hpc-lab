@@ -30,13 +30,14 @@ describe 'hpc-lab-slurm::deploy' do
       .with_content(/^  cmpt:\n    replicas: 2$/)
       .with_content(/resources: \{"requests":\{"cpu":"1","memory":"1Gi"\},"limits":\{"cpu":"2","memory":"2Gi"\}\}/)
       .with_content(/^  cmpt-gpu:\n    replicas: 2$/)
-      .with_content(/^    extraConfMap: \{ Features: \["gpu"\] \}$/)
+      .with_content(/^    extraConfMap: \{"RealMemory":"2048"\}$/)
+      .with_content(/^    extraConfMap: \{"RealMemory":"2048","Features":\["gpu"\]\}$/)
       .with_content(/^partitions: \{"main":\{"enabled":true,"nodesets":\["cmpt"\],"configMap":\{"Default":"YES","MaxTime":"UNLIMITED"\}\},"main-gpu":\{"enabled":true,"nodesets":\["cmpt-gpu"\],"configMap":\{"MaxTime":"UNLIMITED"\}\}\}$/)
   end
 
   {
     'mounts the shared directory on every login and compute node' => { 'hostPath: { path: /shared, type: Directory }' => 3, 'volumeMounts: [{ name: shared, mountPath: /shared }]' => 3 },
-    'sets node features only on the node sets that have them' => { 'extraConfMap' => 1 },
+    'sets node features only on the node sets that have them' => { '"Features"' => 1 },
   }.each do |behaviour, occurrences|
     it behaviour do
       expect(chef_run).to render_file(values).with_content { |content|
@@ -53,6 +54,36 @@ describe 'hpc-lab-slurm::deploy' do
       .with_content(/^SelectTypeParameters=CR_Core_Memory$/)
   end
 
+  it 'schedules memory and confines each job to the memory it asked for' do
+    expect(chef_run).to render_file('/opt/hpc-lab/slurm/slurm.conf')
+      .with_content(/^DefMemPerCPU=1024$/)
+      .with_content(%r{^TaskPlugin=task/cgroup,task/affinity$})
+    expect(chef_run).to render_file('/opt/hpc-lab/slurm/cgroup.conf')
+      .with_content(/^ConstrainRAMSpace=yes$/)
+      .with_content(/^ConstrainSwapSpace=yes$/)
+  end
+
+  {
+    '512Mi' => '512',
+    '3Gi' => '3072',
+  }.each do |limit, real_memory|
+    context "with a #{limit} memory limit" do
+      let(:attrs) { { 'nodesets' => { 'cmpt' => { 'resources' => { 'limits' => { 'memory' => limit } } } } } }
+
+      it "gives its nodes RealMemory=#{real_memory}" do
+        expect(chef_run).to render_file(values).with_content(/^  cmpt:\n(    .*\n)*    extraConfMap: \{"RealMemory":"#{real_memory}"\}$/)
+      end
+    end
+  end
+
+  context 'with a memory limit Slurm cannot be given in MiB' do
+    let(:attrs) { { 'nodesets' => { 'cmpt' => { 'resources' => { 'limits' => { 'memory' => '2G' } } } } } }
+
+    it 'fails naming the limit' do
+      expect { chef_run }.to raise_error(RuntimeError, /memory limit "2G": use Mi or Gi/)
+    end
+  end
+
   it 'installs cert-manager, the operator CRDs, the operator and slurm with the attribute versions' do
     expect(upgraded_releases).to eq(%w(cert-manager slurm-operator-crds slurm-operator slurm))
     expect(chef_run).to run_execute('helm upgrade --install cert-manager')
@@ -60,7 +91,12 @@ describe 'hpc-lab-slurm::deploy' do
     expect(chef_run).to run_execute('helm upgrade --install slurm-operator-crds').with(command: /slurm-operator-crds --version 1.2.3 --namespace slinky /)
     expect(chef_run).to run_execute('helm upgrade --install slurm-operator').with(command: /slurm-operator --version 1.2.3 --namespace slinky .* --wait /)
     expect(chef_run).to run_execute('helm upgrade --install slurm')
-      .with(command: %r{charts/slurm --version 1.2.3 --namespace slurm .* -f #{values} --set-file controller.extraConf=/opt/hpc-lab/slurm/slurm.conf && sha256sum })
+      .with(command: %r{charts/slurm --version 1.2.3 --namespace slurm .* -f #{values} --set-file controller.extraConf=/opt/hpc-lab/slurm/slurm.conf --set-file 'configFiles\.cgroup\\\.conf=/opt/hpc-lab/slurm/cgroup\.conf' })
+  end
+
+  it 'reconfigures Slurm once the controller sees the new config files, then stamps all of them' do
+    expect(chef_run).to run_execute('helm upgrade --install slurm')
+      .with(command: %r{until \[ "\$\(kubectl -n slurm exec slurm-controller-0 -c slurmctld -- cat /etc/slurm/cgroup\.conf 2>/dev/null\)" = "\$\(cat /opt/hpc-lab/slurm/cgroup\.conf\)" \] && slurm-exec scontrol reconfigure; do sleep 5; done' && sha256sum #{values} /opt/hpc-lab/slurm/slurm\.conf /opt/hpc-lab/slurm/cgroup\.conf > })
   end
 
   it 'waits for every compute node to be idle' do

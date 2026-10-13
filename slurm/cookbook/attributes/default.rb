@@ -5,6 +5,7 @@ default['hpc-lab-slurm']['cert_manager_version'] = 'v1.21.2'
 # Version of the Slinky charts: slurm-operator-crds, slurm-operator and slurm.
 default['hpc-lab-slurm']['slinky_version'] = '1.2.3'
 # Cluster shape, rendered into the slurm chart values (templates/slurm-chart-values.yaml.erb).
+# A nodeset's memory limit, in Mi or Gi, is the memory Slurm schedules on each of its nodes.
 # Schema: https://github.com/SlinkyProject/slurm-operator/blob/v1.2.3/helm/slurm/README.md
 default['hpc-lab-slurm']['cluster_name'] = 'hpc-lab'
 default['hpc-lab-slurm']['loginsets'] = {
@@ -71,3 +72,6 @@ default['hpc-lab-slurm']['slurm_conf']['MinJobAge'] = 600
 default['hpc-lab-slurm']['slurm_conf']['SchedulerType'] = 'sched/backfill'
 default['hpc-lab-slurm']['slurm_conf']['SelectType'] = 'select/cons_tres'
 default['hpc-lab-slurm']['slurm_conf']['SelectTypeParameters'] = 'CR_Core_Memory'
+# MiB; the compute nodes have 2 CPUs and 2Gi, so 1024 lets a node run two 1-CPU jobs.
+default['hpc-lab-slurm']['slurm_conf']['DefMemPerCPU'] = 1024
+default['hpc-lab-slurm']['slurm_conf']['TaskPlugin'] = 'task/cgroup,task/affinity'

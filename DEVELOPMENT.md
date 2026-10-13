@@ -141,9 +141,20 @@ After scaling down, the controller keeps the removed node as `drain*` (reason `s
 To remove a partition or a node set, delete its entry and run `make start-slurm`; the nodes of a removed node set stay as records in the controller, deleted with `slurm-exec scontrol delete nodename=<node>`.
 
 **Node features** are the `features` list of a node set (`%w(gpu)` on `cmpt-gpu`); jobs select them with `--constraint`.
-The controller keeps node records across `make stop-slurm`, so a feature change reaches existing nodes only after their records are deleted (`scontrol delete`) or after `make clean`.
+
+**Memory** is scheduled like cores (`SelectTypeParameters=CR_Core_Memory`). Each node offers the memory limit of its node set (`resources.limits.memory`, in `Mi` or `Gi`) as `RealMemory`, 2048 MiB by default.
+A job asks for memory with `--mem` (per node) or `--mem-per-cpu`; without either it gets `DefMemPerCPU` (1024 MiB) per allocated CPU.
+A job that uses more than it asked for is killed (`task/cgroup` with `ConstrainRAMSpace` and `ConstrainSwapSpace` in `slurm/cookbook/templates/cgroup.conf.erb`), and a request larger than any node is rejected at submission.
+
+**Node settings** (features, memory) apply when a node registers, and the controller keeps node records across pod restarts and `make stop-slurm`.
+After changing them, `make start-slurm` restarts the slurmd pods, but existing nodes keep their old settings until their records are re-created: delete the record, then the pod, one node at a time, or run `make clean`:
+
+```shell
+slurm-exec scontrol delete nodename=cmpt-0 && kubectl -n slurm delete pod slurm-worker-cmpt-0
+```
 
 **slurm.conf settings** are the `slurm_conf` attributes, rendered by `slurm/cookbook/templates/slurm.conf.erb`, which spells out each setting: a new setting needs an attribute and a line in the template.
+Other Slurm config files (`cgroup.conf`) are templates of their own, mounted next to `slurm.conf`; after an upgrade, `make start-slurm` waits until the controller sees them and runs `scontrol reconfigure`, since the operator restarts the controller only for `slurm.conf` changes.
 
 **Drain and resume a node:**
 
@@ -169,6 +180,8 @@ sbatch hello.sbatch                        # batch job; output in hello-<job id>
 srun -N2 hostname                          # run a command on 2 nodes of the default partition
 srun -p main-gpu -C gpu -N2 hostname       # partition main-gpu, nodes with feature gpu
 salloc -N1 -p main                         # interactive allocation; srun inside it, exit to release
+srun --mem=1500M hostname                  # a node with 1500 MiB free; pending while none has
+sbatch -c2 --mem-per-cpu=512M job.sbatch   # 2 CPUs and 1 GiB on one node
 squeue                                     # pending and running jobs
 scontrol show job <job id>                 # one job in detail, also shortly after it ends
 scancel <job id>                           # cancel a job
