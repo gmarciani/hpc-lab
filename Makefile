@@ -48,8 +48,13 @@ stop: docker-check
 	docker compose -f ${COMPOSE_FILE} stop $(service)
 restart: stop start
 redeploy: clean start
+# A recreated container mounts the anonymous volumes of the one it replaces by
+# name, so `down --volumes` leaves them behind: collect the volumes of every
+# container first and remove whatever is left after `down`.
 clean: docker-check
-	docker compose -f ${COMPOSE_FILE} down --rmi local --volumes --remove-orphans
+	volumes="$$(docker compose -f ${COMPOSE_FILE} ps --all --quiet | xargs -r docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}} {{end}}{{end}}')" && \
+	docker compose -f ${COMPOSE_FILE} down --rmi local --volumes --remove-orphans && \
+	echo $${volumes} | xargs -r docker volume rm --force >/dev/null
 show:
 	@docker compose -f ${COMPOSE_FILE} ps --format json | \
 		jq -rs '["SERVICE","STATE","HEALTH","URL"], (.[] | . as $$svc | (.Publishers[]? | select(.PublishedPort != 0 and .URL == "127.0.0.1") | [$$svc.Service, $$svc.State, $$svc.Status, "http://localhost:\(.PublishedPort)"]), (select([.Publishers[]? | select(.PublishedPort != 0 and .URL == "127.0.0.1")] | length == 0) | [.Service, .State, .Status, "-"])) | @tsv' | \
