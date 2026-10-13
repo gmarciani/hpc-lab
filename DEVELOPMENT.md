@@ -47,6 +47,7 @@ The k8s `image` recipe holds only what must exist before the first converge can 
 
 | Operation | Command |
 |---|---|
+| List the targets with their description | `make help` |
 | Build images | `make build` (or `make build service=admin`); `make start` runs it first |
 | Start / stop / destroy everything | `make start` / `make stop` / `make clean` |
 | Start / stop the Kubernetes layer | `make start-k8s` / `make stop-k8s` |
@@ -56,7 +57,7 @@ The k8s `image` recipe holds only what must exist before the first converge can 
 | Containers and URLs / both clusters | `make show` / `make describe` (also the last step of `make start`) |
 | Container logs | `make get-logs service=k8s-control-plane` (a worker: `service=k8s-worker-2`) |
 | First-boot (kubeadm) log of a node | `docker compose exec k8s-control-plane journalctl -u k8s-bootstrap` (a worker: `exec --index 2 k8s-worker`) |
-| Lint the cookbooks / the shell scripts | `make lint-chef` / `make lint-shell` (both: `make lint`; one cookbook: `make lint-chef cookbook=slurm`) |
+| Lint the cookbooks / the shell scripts / the Makefile help | `make lint-chef` / `make lint-shell` / `make lint-make` (all: `make lint`; one cookbook: `make lint-chef cookbook=slurm`) |
 | Unit-test the cookbooks | `make test-chef` (with `make lint`: `make test`; one cookbook: `make test-chef cookbook=slurm`) |
 | Shell in a compose service | `make login service=admin` (a worker: `service=k8s-worker-2`, replica 2) |
 | SSH into admin | `make ssh-admin` |
@@ -195,7 +196,7 @@ The trade-off: the image is maintained by kind rather than by the Kubernetes rel
 
 ## Testing
 
-`make test` runs Cookstyle (`make lint-chef`), ShellCheck on every shell script (`make lint-shell`) and the ChefSpec unit tests of every cookbook (`make test-chef`). Cookstyle and ChefSpec run in the `cincproject/workstation` image and ShellCheck in `koalaman/shellcheck`, so neither Ruby nor ShellCheck is needed on the host; the 🧪 Test workflow runs the same targets on pull requests. ShellCheck finds the scripts by their shebang among the files tracked by git, and `.shellcheckrc` lists the checks disabled for the whole repo.
+`make test` runs Cookstyle (`make lint-chef`), ShellCheck on every shell script (`make lint-shell`), a check that every Makefile target has a `##` description for `make help` (`make lint-make`) and the ChefSpec unit tests of every cookbook (`make test-chef`). Cookstyle and ChefSpec run in the `cincproject/workstation` image and ShellCheck in `koalaman/shellcheck`, so neither Ruby nor ShellCheck is needed on the host; the 🧪 Test workflow runs the same targets on pull requests. ShellCheck finds the scripts by their shebang among the files tracked by git, and `.shellcheckrc` lists the checks disabled for the whole repo.
 Specs live in `*/cookbook/spec/unit/recipes/` and converge the recipes in memory against RHEL 9 (admin, slurm) or Debian 13 (k8s) platform data.
 `make test-k8s` and `make test-slurm` are the live checks: API server and node readiness, and a hello world batch job whose output is read from `/shared`.
 

@@ -83,6 +83,7 @@ slurm-exec squeue      # run a command on the Slurm head node
 ```
 
 ```shell
+make help           # list the targets
 make test-k8s       # health check of the Kubernetes cluster
 make start-k8s workers=6  # scale the Kubernetes workers
 make test-slurm     # submit a hello world batch job

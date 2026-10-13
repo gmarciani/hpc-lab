@@ -14,4 +14,5 @@
 - Cinc Client 19.3.14
 - Docker images:
   - admin node: `registry.access.redhat.com/ubi9/ubi:9.8`
+- `make help` lists the targets with their description.
 - `make lint` lints the cookbooks (Cookstyle) and the shell scripts (ShellCheck); `make test` also unit-tests the cookbooks (ChefSpec).
