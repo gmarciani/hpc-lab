@@ -1,0 +1,12 @@
+# gres.conf of the Slurm cluster, from the gpus of each hpc-lab-slurm node set;
+# slurmctld hands it to every slurmd (configless). Reference: https://slurm.schedmd.com/gres.conf.html
+# The lab has no GPUs: each fake GPU is bound to its own placeholder character
+# device, /dev/tty<index>, so Slurm allocates GPUs one by one and tells a job which
+# one it got (CUDA_VISIBLE_DEVICES). The devices are not restricted or touched.
+# The slurmd image would look for real GPUs otherwise.
+AutoDetect=off
+<% @gpu_nodesets.each do |name, set| -%>
+<% set['gpus'].each_with_index do |type, index| -%>
+NodeName=<%= name %>-[0-<%= set['replicas'] - 1 %>] Name=gpu Type=<%= type %> File=/dev/tty<%= index %>
+<% end -%>
+<% end -%>

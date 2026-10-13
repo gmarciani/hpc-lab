@@ -146,7 +146,11 @@ To remove a partition or a node set, delete its entry and run `make start-slurm`
 A job asks for memory with `--mem` (per node) or `--mem-per-cpu`; without either it gets `DefMemPerCPU` (1024 MiB) per allocated CPU.
 A job that uses more than it asked for is killed (`task/cgroup` with `ConstrainRAMSpace` and `ConstrainSwapSpace` in `slurm/cookbook/templates/cgroup.conf.erb`), and a request larger than any node is rejected at submission.
 
-**Node settings** (features, memory) apply when a node registers, and the controller keeps node records across pod restarts and `make stop-slurm`.
+**GPUs** are the `gpus` list of a node set, one entry per GPU with its type: `%w(a100 h100)` on `cmpt-gpu`, so each node of `main-gpu` has an `a100` (index 0) and an `h100` (index 1).
+The lab has no GPUs: they are Slurm generic resources (GRES) bound to placeholder devices (`slurm/cookbook/templates/gres.conf.erb`), scheduled and counted like real ones, and a job learns which GPU it got from `CUDA_VISIBLE_DEVICES`.
+Jobs ask for them with `--gres=gpu:<count>` (any type), `--gres=gpu:<type>:<count>` or `--gpus=<count>`; with `-w <node>` they target one GPU of one node.
+
+**Node settings** (features, memory, GPUs) apply when a node registers, and the controller keeps node records across pod restarts and `make stop-slurm`.
 After changing them, `make start-slurm` restarts the slurmd pods, but existing nodes keep their old settings until their records are re-created: delete the record, then the pod, one node at a time, or run `make clean`:
 
 ```shell
@@ -154,7 +158,7 @@ slurm-exec scontrol delete nodename=cmpt-0 && kubectl -n slurm delete pod slurm-
 ```
 
 **slurm.conf settings** are the `slurm_conf` attributes, rendered by `slurm/cookbook/templates/slurm.conf.erb`, which spells out each setting: a new setting needs an attribute and a line in the template.
-Other Slurm config files (`cgroup.conf`) are templates of their own, mounted next to `slurm.conf`; after an upgrade, `make start-slurm` waits until the controller sees them and runs `scontrol reconfigure`, since the operator restarts the controller only for `slurm.conf` changes.
+Other Slurm config files (`cgroup.conf`, `gres.conf`) are templates of their own, mounted next to `slurm.conf`; after an upgrade, `make start-slurm` waits until the controller sees them and runs `scontrol reconfigure`, since the operator restarts the controller only for `slurm.conf` changes.
 
 **Drain and resume a node:**
 
@@ -182,6 +186,9 @@ srun -p main-gpu -C gpu -N2 hostname       # partition main-gpu, nodes with feat
 salloc -N1 -p main                         # interactive allocation; srun inside it, exit to release
 srun --mem=1500M hostname                  # a node with 1500 MiB free; pending while none has
 sbatch -c2 --mem-per-cpu=512M job.sbatch   # 2 CPUs and 1 GiB on one node
+srun -p main-gpu --gres=gpu:h100:1 env | grep CUDA_VISIBLE_DEVICES  # one h100: CUDA_VISIBLE_DEVICES=1
+srun -p main-gpu -w cmpt-gpu-1 --gres=gpu:a100:1 hostname           # the a100 of cmpt-gpu-1
+srun -p main-gpu --gpus=2 hostname                                  # both GPUs of a node
 squeue                                     # pending and running jobs
 scontrol show job <job id>                 # one job in detail, also shortly after it ends
 scancel <job id>                           # cancel a job

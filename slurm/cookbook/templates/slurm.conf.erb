@@ -17,5 +17,11 @@ SelectTypeParameters=<%= @conf['SelectTypeParameters'] %>
 # CPU; without it the job takes all the memory of its node.
 DefMemPerCPU=<%= @conf['DefMemPerCPU'] %>
 
+<% if @gpus -%>
+# Generic resources the nodes may offer: GPUs (gres.conf), which jobs ask for
+# with --gres=gpu[:<type>]:<count> or --gpus.
+GresTypes=gpu
+
+<% end -%>
 # Each job step runs in its own cgroup, limited to the memory of the job (cgroup.conf).
 TaskPlugin=<%= @conf['TaskPlugin'] %>
