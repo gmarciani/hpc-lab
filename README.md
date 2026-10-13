@@ -25,7 +25,8 @@ Kubernetes
 ├── slurm-operator          namespace slinky     (SchedMD Slinky)
 └── slurm                   namespace slurm      (slurmctld, slurmrestd,
                                                   partitions main (cmpt-0, cmpt-1) and
-                                                  main-gpu (cmpt-gpu-0, cmpt-gpu-1), 2 CPUs and 2 GiB each,
+                                                  main-gpu (cmpt-gpu-0, cmpt-gpu-1, fake GPUs a100 and h100 each),
+                                                  2 CPUs and 2 GiB each,
                                                   memory scheduled with --mem, 1 login node,
                                                   /shared on login and compute nodes)
 ```

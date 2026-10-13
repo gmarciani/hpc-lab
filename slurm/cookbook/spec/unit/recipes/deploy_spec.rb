@@ -31,7 +31,7 @@ describe 'hpc-lab-slurm::deploy' do
       .with_content(/resources: \{"requests":\{"cpu":"1","memory":"1Gi"\},"limits":\{"cpu":"2","memory":"2Gi"\}\}/)
       .with_content(/^  cmpt-gpu:\n    replicas: 2$/)
       .with_content(/^    extraConfMap: \{"RealMemory":"2048"\}$/)
-      .with_content(/^    extraConfMap: \{"RealMemory":"2048","Features":\["gpu"\]\}$/)
+      .with_content(/^    extraConfMap: \{"RealMemory":"2048","Features":\["gpu"\],"Gres":"gpu:a100:1,gpu:h100:1"\}$/)
       .with_content(/^partitions: \{"main":\{"enabled":true,"nodesets":\["cmpt"\],"configMap":\{"Default":"YES","MaxTime":"UNLIMITED"\}\},"main-gpu":\{"enabled":true,"nodesets":\["cmpt-gpu"\],"configMap":\{"MaxTime":"UNLIMITED"\}\}\}$/)
   end
 
@@ -61,6 +61,41 @@ describe 'hpc-lab-slurm::deploy' do
     expect(chef_run).to render_file('/opt/hpc-lab/slurm/cgroup.conf')
       .with_content(/^ConstrainRAMSpace=yes$/)
       .with_content(/^ConstrainSwapSpace=yes$/)
+  end
+
+  it 'gives the GPU nodes two typed GPUs, each bound to its own device' do
+    expect(chef_run).to render_file('/opt/hpc-lab/slurm/slurm.conf').with_content(/^GresTypes=gpu$/)
+    expect(chef_run).to render_file('/opt/hpc-lab/slurm/gres.conf').with_content { |content|
+      expect(content.lines(chomp: true).grep_v(/^#/)).to eq(
+        [
+          'AutoDetect=off',
+          'NodeName=cmpt-gpu-[0-1] Name=gpu Type=a100 File=/dev/tty0',
+          'NodeName=cmpt-gpu-[0-1] Name=gpu Type=h100 File=/dev/tty1',
+        ]
+      )
+    }
+    expect(chef_run).to run_execute('helm upgrade --install slurm')
+      .with(command: %r{--set-file 'configFiles\.gres\\\.conf=/opt/hpc-lab/slurm/gres\.conf' .*cat /etc/slurm/gres\.conf})
+  end
+
+  context 'with three GPUs of one type on three nodes' do
+    let(:attrs) { { 'nodesets' => { 'cmpt-gpu' => { 'replicas' => 3, 'gpus' => %w(a100 a100 a100) } } } }
+
+    it 'counts them in one Gres entry and binds each to the next device' do
+      expect(chef_run).to render_file(values).with_content(/"Gres":"gpu:a100:3"/)
+      expect(chef_run).to render_file('/opt/hpc-lab/slurm/gres.conf')
+        .with_content(%r{^NodeName=cmpt-gpu-\[0-2\] Name=gpu Type=a100 File=/dev/tty2$})
+    end
+  end
+
+  context 'without GPUs' do
+    let(:attrs) { { 'nodesets' => { 'cmpt-gpu' => { 'gpus' => [] } } } }
+
+    it 'declares no GPU resource' do
+      expect(chef_run).to render_file(values).with_content { |content| expect(content).not_to include('Gres') }
+      expect(chef_run).to render_file('/opt/hpc-lab/slurm/slurm.conf').with_content { |content| expect(content).not_to include('GresTypes') }
+      expect(chef_run).to render_file('/opt/hpc-lab/slurm/gres.conf').with_content { |content| expect(content).not_to include('NodeName') }
+    end
   end
 
   {
@@ -96,7 +131,7 @@ describe 'hpc-lab-slurm::deploy' do
 
   it 'reconfigures Slurm once the controller sees the new config files, then stamps all of them' do
     expect(chef_run).to run_execute('helm upgrade --install slurm')
-      .with(command: %r{until \[ "\$\(kubectl -n slurm exec slurm-controller-0 -c slurmctld -- cat /etc/slurm/cgroup\.conf 2>/dev/null\)" = "\$\(cat /opt/hpc-lab/slurm/cgroup\.conf\)" \] && slurm-exec scontrol reconfigure; do sleep 5; done' && sha256sum #{values} /opt/hpc-lab/slurm/slurm\.conf /opt/hpc-lab/slurm/cgroup\.conf > })
+      .with(command: %r{until \[ "\$\(kubectl -n slurm exec slurm-controller-0 -c slurmctld -- cat /etc/slurm/cgroup\.conf 2>/dev/null\)" = "\$\(cat /opt/hpc-lab/slurm/cgroup\.conf\)" \] && \[ .* = "\$\(cat /opt/hpc-lab/slurm/gres\.conf\)" \] && slurm-exec scontrol reconfigure; do sleep 5; done' && sha256sum #{values} /opt/hpc-lab/slurm/slurm\.conf /opt/hpc-lab/slurm/cgroup\.conf /opt/hpc-lab/slurm/gres\.conf > })
   end
 
   it 'waits for every compute node to be idle' do

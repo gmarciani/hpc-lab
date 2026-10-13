@@ -5,7 +5,7 @@ config_dir = "#{slurm['home']}/slurm"
 values = "#{config_dir}/slurm-chart-values.yaml"
 conf_file = "#{config_dir}/slurm.conf"
 # Extra config files, mounted next to slurm.conf (chart value configFiles).
-config_files = %w(cgroup.conf).to_h { |name| [name, "#{config_dir}/#{name}"] }
+config_files = %w(cgroup.conf gres.conf).to_h { |name| [name, "#{config_dir}/#{name}"] }
 stamp = "#{Chef::Config[:file_cache_path]}/slurm-values.sha256"
 compute_nodes = slurm['nodesets'].values.sum { |set| set['replicas'] }
 # --responding leaves out stale records of nodes that no longer exist.
@@ -27,6 +27,8 @@ node_conf = slurm['nodesets'].map do |name, set|
   conf = {}
   conf['RealMemory'] = mebibytes[memory].to_s if memory
   conf['Features'] = set['features'].to_a if set['features']
+  # Gres=gpu:a100:1,gpu:h100:1: the count of each GPU type, in the order of the list.
+  conf['Gres'] = set['gpus'].tally.map { |type, count| "gpu:#{type}:#{count}" }.join(',') unless set['gpus'].to_a.empty?
   [name, conf]
 end.to_h
 
@@ -39,14 +41,17 @@ template values do
   variables(slurm: slurm, node_conf: node_conf)
 end
 
+gpu_nodesets = slurm['nodesets'].reject { |_name, set| set['gpus'].to_a.empty? }
+
 template conf_file do
   source 'slurm.conf.erb'
-  variables(conf: slurm['slurm_conf'])
+  variables(conf: slurm['slurm_conf'], gpus: gpu_nodesets.any?)
 end
 
 config_files.each_value do |path|
   template path do
     source "#{::File.basename(path)}.erb"
+    variables(gpu_nodesets: gpu_nodesets)
   end
 end
 

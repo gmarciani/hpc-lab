@@ -15,7 +15,7 @@ default['hpc-lab-slurm']['loginsets'] = {
 }
 # The operator names the compute nodes <nodeset>-<ordinal>, counting from 0:
 # cmpt-0, cmpt-1 and cmpt-gpu-0, cmpt-gpu-1. The lab has no GPUs: cmpt-gpu nodes
-# are CPU pods like the others, in their own partition.
+# are CPU pods like the others, in their own partition, with fake GPUs.
 default['hpc-lab-slurm']['nodesets'] = {
   'cmpt' => {
     'replicas' => 2,
@@ -36,6 +36,10 @@ default['hpc-lab-slurm']['nodesets'] = {
     # nodeset name. The controller keeps node records across make stop-slurm, so a
     # change reaches existing nodes only after make clean (or deleting their records).
     'features' => %w(gpu),
+    # GPUs of each node, one entry per GPU: its type, which jobs select with
+    # --gres=gpu:<type>:<count>. They are GRES bound to placeholder devices
+    # (templates/gres.conf.erb); jobs get their index in CUDA_VISIBLE_DEVICES.
+    'gpus' => %w(a100 h100),
     'resources' => {
       'requests' => {
         'cpu' => '1',
