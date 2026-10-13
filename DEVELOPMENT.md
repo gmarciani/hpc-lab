@@ -20,7 +20,7 @@ For host `kubectl`, run `eval "$(make kubeconfig)"`.
 ## Project structure
 
 ```
-docker-compose.yaml     services: admin, k8s-control-plane, k8s-worker (4 replicas by default)
+docker-compose.yaml     services: admin, kubernetes-control-plane, kubernetes-worker (4 replicas by default)
 Makefile                lifecycle, lint and test targets
 admin/
   Dockerfile            ubi9 + Cinc + the entrypoint, which converges the cookbook at container start
@@ -28,10 +28,10 @@ admin/
   client.rb             Cinc Client local-mode configuration, copied into the image
   cookbook/             hpc-lab-admin: recipes dependencies (packages, kubectl, helm), ssh, libraries (lab scripts)
   ssh/                  SSH keypair for the admin container (generated, gitignored)
-k8s/
-  Dockerfile            kindest/node + Cinc + recipe hpc-lab-k8s::image
+kubernetes/
+  Dockerfile            kindest/node + Cinc + recipe hpc-lab-kubernetes::image
   client.rb             Cinc Client local-mode configuration, copied into the image
-  cookbook/             hpc-lab-k8s: kubeadm.conf, first-boot unit, kubeadm init / join
+  cookbook/             hpc-lab-kubernetes: kubeadm.conf, first-boot unit, kubeadm init / join
   .env.secrets.local    kubeadm token (generated, gitignored)
 slurm/
   cookbook/             hpc-lab-slurm: deploy / destroy of cert-manager, the Slinky operator and the Slurm chart
@@ -40,8 +40,8 @@ resources/              brand assets, host-side scripts
 
 Inside a container the lab lives under `/opt/hpc-lab` (the cookbooks' `home` attribute, declared once per Dockerfile as `HPC_LAB_HOME`): `chef/client.rb` and the cookbooks it runs, mounted read-only under `chef/cookbooks/<name>` at image build and at runtime, and on admin the `ssh/` keypair.
 A cookbook's `files/` and `templates/` mirror the target filesystem; each `files/` directory is copied whole (`remote_directory`). The `home` attribute reaches the admin scripts as `HPC_LAB_HOME`, exported by the `hpc-lab.sh` library template they source, and the node unit through its template.
-The k8s `image` recipe holds only what must exist before the first converge can run, the systemd unit that runs it; the admin image needs only the entrypoint, copied by its Dockerfile. Everything else is in the `default` recipes, applied at container start.
-`make start-k8s` therefore waits for the admin container to become healthy (sshd listening, which the entrypoint starts after the converge) before running the lab scripts in it.
+The kubernetes `image` recipe holds only what must exist before the first converge can run, the systemd unit that runs it; the admin image needs only the entrypoint, copied by its Dockerfile. Everything else is in the `default` recipes, applied at container start.
+`make start-kubernetes` therefore waits for the admin container to become healthy (sshd listening, which the entrypoint starts after the converge) before running the lab scripts in it.
 
 ## Common commands
 
@@ -50,28 +50,28 @@ The k8s `image` recipe holds only what must exist before the first converge can 
 | List the targets with their description | `make help` |
 | Build images | `make build` (or `make build service=admin`); `make start` runs it first |
 | Start / stop / destroy everything | `make start` / `make stop` / `make clean` |
-| Start / stop the Kubernetes layer | `make start-k8s` / `make stop-k8s` |
-| Scale the Kubernetes workers | `make start-k8s workers=6` (later runs keep the count) |
+| Start / stop the Kubernetes layer | `make start-kubernetes` / `make stop-kubernetes` |
+| Scale the Kubernetes workers | `make start-kubernetes workers=6` (later runs keep the count) |
 | Start / stop the Slurm layer | `make start-slurm` / `make stop-slurm` |
-| Health check of Kubernetes / hello world Slurm job | `make test-k8s` / `make test-slurm` |
+| Health check of Kubernetes / hello world Slurm job | `make test-kubernetes` / `make test-slurm` |
 | Containers and URLs / both clusters | `make show` / `make describe` (also the last step of `make start`) |
-| Container logs | `make get-logs service=k8s-control-plane` (a worker: `service=k8s-worker-2`) |
-| First-boot (kubeadm) log of a node | `docker compose exec k8s-control-plane journalctl -u k8s-bootstrap` (a worker: `exec --index 2 k8s-worker`) |
+| Container logs | `make get-logs service=kubernetes-control-plane` (a worker: `service=kubernetes-worker-2`) |
+| First-boot (kubeadm) log of a node | `docker compose exec kubernetes-control-plane journalctl -u kubernetes-bootstrap` (a worker: `exec --index 2 kubernetes-worker`) |
 | Lint the cookbooks / the shell scripts / the Makefile help | `make lint-chef` / `make lint-shell` / `make lint-make` (all: `make lint`; one cookbook: `make lint-chef cookbook=slurm`) |
 | Unit-test the cookbooks | `make test-chef` (with `make lint`: `make test`; one cookbook: `make test-chef cookbook=slurm`) |
-| Shell in a compose service | `make login service=admin` (a worker: `service=k8s-worker-2`, replica 2) |
+| Shell in a compose service | `make login service=admin` (a worker: `service=kubernetes-worker-2`, replica 2) |
 | SSH into admin | `make ssh-admin` |
 | Shell on the Slurm login / head / a compute node | `make ssh-slurm-login` / `make ssh-slurm-head` / `make ssh-slurm-compute node=cmpt-1` |
 | Generate the lab SSH keypair (kept if present) | `make ssh-key` |
 | Host kubectl config | `make kubeconfig` |
 
-Inside the admin container: `kubectl`, `helm`, `slurm-deploy`, `slurm-destroy`, `k8s-test`, `slurm-test`.
+Inside the admin container: `kubectl`, `helm`, `slurm-deploy`, `slurm-destroy`, `kubernetes-test`, `slurm-test`.
 `slurm-exec [head|login|compute NODE] <command>` runs a command on a Slurm node, the head node by default.
 `slurm-shell head|login|compute NODE` opens a shell there.
 
 Configuration is cookbook attributes, one file per component under `*/cookbook/attributes/default.rb`:
 the Slurm cluster shape, chart versions and `slurm.conf` settings (`make start-slurm` applies them, no rebuild needed since the cookbook is mounted);
-the Kubernetes version, control-plane endpoint and subnets (`make redeploy`), where the version must match the `kindest/node` tag in `k8s/Dockerfile` and stay within one minor of the admin `kubectl_version`.
+the Kubernetes version, control-plane endpoint and subnets (`make redeploy`), where the version must match the `kindest/node` tag in `kubernetes/Dockerfile` and stay within one minor of the admin `kubectl_version`.
 Host ports are in `docker-compose.yaml`; the Cinc Client version is the `CINC_VERSION` build argument of each Dockerfile.
 
 ## Operations
@@ -85,21 +85,21 @@ Unless a block says otherwise, the commands below run on the admin node.
 Inspect the cluster:
 
 ```shell
-kubectl get nodes -o wide                                        # nodes, versions and IPs
-kubectl describe node k8s-worker-1                               # capacity, conditions, pods
-kubectl get pods -A -o wide --field-selector spec.nodeName=k8s-worker-1  # pods on a node
-make test-k8s                                                    # API readiness and node status (host)
+kubectl get nodes -o wide                                                       # nodes, versions and IPs
+kubectl describe node kubernetes-worker-1                                       # capacity, conditions, pods
+kubectl get pods -A -o wide --field-selector spec.nodeName=kubernetes-worker-1  # pods on a node
+make test-kubernetes                                                            # API readiness and node status (host)
 ```
 
-Logs of a node, on the host: `docker compose exec --index 1 k8s-worker journalctl -u kubelet` for kubelet and `journalctl -u k8s-bootstrap` for its first boot (`kubeadm init` or `join`); `docker compose exec k8s-control-plane ...` for the control plane.
+Logs of a node, on the host: `docker compose exec --index 1 kubernetes-worker journalctl -u kubelet` for kubelet and `journalctl -u kubernetes-bootstrap` for its first boot (`kubeadm init` or `join`); `docker compose exec kubernetes-control-plane ...` for the control plane.
 
-**Scale the workers.** The workers are the replicas of the compose service `k8s-worker`, 4 by default; replica N joins the cluster as node `k8s-worker-N` on its first boot.
-On the host, `make start-k8s workers=6` scales the service and returns once every node is Ready; later `make start-k8s` and `make start` keep the current count, and `make clean` resets it to 4.
+**Scale the workers.** The workers are the replicas of the compose service `kubernetes-worker`, 4 by default; replica N joins the cluster as node `kubernetes-worker-N` on its first boot.
+On the host, `make start-kubernetes workers=6` scales the service and returns once every node is Ready; later `make start-kubernetes` and `make start` keep the current count, and `make clean` resets it to 4.
 
 - **Scale up:** compose starts the new replicas, which run `kubeadm join`.
-- **Scale down:** compose removes the replicas with the highest index, and `make start-k8s` deletes their nodes from the cluster. Their pods are rescheduled on the remaining workers; to move them first, drain the nodes that will go, e.g. `kubectl drain k8s-worker-6 --ignore-daemonsets --delete-emptydir-data`.
+- **Scale down:** compose removes the replicas with the highest index, and `make start-kubernetes` deletes their nodes from the cluster. Their pods are rescheduled on the remaining workers; to move them first, drain the nodes that will go, e.g. `kubectl drain kubernetes-worker-6 --ignore-daemonsets --delete-emptydir-data`.
 
-**Maintenance of a node:** `kubectl drain k8s-worker-1 --ignore-daemonsets --delete-emptydir-data` evicts its pods and `kubectl uncordon k8s-worker-1` returns it to service.
+**Maintenance of a node:** `kubectl drain kubernetes-worker-1 --ignore-daemonsets --delete-emptydir-data` evicts its pods and `kubectl uncordon kubernetes-worker-1` returns it to service.
 The Slinky operator runs at most one slurmd pod per Kubernetes node: while a worker is drained, the Slurm compute node it hosted stays Pending unless another worker has no slurmd pod.
 
 ### Slurm cluster
@@ -120,7 +120,7 @@ kubectl -n slurm get nodesets,loginsets,pods -o wide  # the Kubernetes side: nod
 
 **Scale compute nodes.** Change the `replicas` of a node set, e.g. `'cmpt' => { 'replicas' => 3, ... }`, then `make start-slurm`.
 Node names follow `<node set>-<ordinal>`, from 0; scaling down removes the highest ordinals.
-Each compute node needs its own Kubernetes worker: with more replicas in total than workers, the extra pods stay Pending, so add workers first (`make start-k8s workers=N`).
+Each compute node needs its own Kubernetes worker: with more replicas in total than workers, the extra pods stay Pending, so add workers first (`make start-kubernetes workers=N`).
 After scaling down, the controller keeps the removed node as `drain*` (reason `slurm-operator: Pod is terminating`); delete the record with `slurm-exec scontrol delete nodename=cmpt-2`.
 
 **Add a partition on existing nodes.** A node may belong to several partitions. Add an entry to `partitions`:
@@ -137,7 +137,7 @@ After scaling down, the controller keeps the removed node as `drain*` (reason `s
 
 `configMap` takes any [partition parameter](https://slurm.schedmd.com/slurm.conf.html#SECTION_PARTITION-CONFIGURATION) (`Default`, `MaxTime`, `MaxNodes`, ...).
 
-**Add a partition on new nodes.** Add a node set to `nodesets`, e.g. `'cmpt-hm' => { 'replicas' => 1 }`, and a partition listing it, e.g. `'highmem' => { 'enabled' => true, 'nodesets' => %w(cmpt-hm) }`; add one Kubernetes worker per new node first (`make start-k8s workers=N`).
+**Add a partition on new nodes.** Add a node set to `nodesets`, e.g. `'cmpt-hm' => { 'replicas' => 1 }`, and a partition listing it, e.g. `'highmem' => { 'enabled' => true, 'nodesets' => %w(cmpt-hm) }`; add one Kubernetes worker per new node first (`make start-kubernetes workers=N`).
 To remove a partition or a node set, delete its entry and run `make start-slurm`; the nodes of a removed node set stay as records in the controller, deleted with `slurm-exec scontrol delete nodename=<node>`.
 
 **Node features** are the `features` list of a node set (`%w(gpu)` on `cmpt-gpu`); jobs select them with `--constraint`.
@@ -217,8 +217,8 @@ The trade-off: the image is maintained by kind rather than by the Kubernetes rel
 ## Testing
 
 `make test` runs Cookstyle (`make lint-chef`), ShellCheck on every shell script (`make lint-shell`), a check that every Makefile target has a `##` description for `make help` (`make lint-make`) and the ChefSpec unit tests of every cookbook (`make test-chef`). Cookstyle and ChefSpec run in the `cincproject/workstation` image and ShellCheck in `koalaman/shellcheck`, so neither Ruby nor ShellCheck is needed on the host; the 🧪 Test workflow runs the same targets on pull requests. ShellCheck finds the scripts by their shebang among the files tracked by git, and `.shellcheckrc` lists the checks disabled for the whole repo.
-Specs live in `*/cookbook/spec/unit/recipes/` and converge the recipes in memory against RHEL 9 (admin, slurm) or Debian 13 (k8s) platform data.
-`make test-k8s` and `make test-slurm` are the live checks: API server and node readiness, and a hello world batch job whose output is read from `/shared`.
+Specs live in `*/cookbook/spec/unit/recipes/` and converge the recipes in memory against RHEL 9 (admin, slurm) or Debian 13 (kubernetes) platform data.
+`make test-kubernetes` and `make test-slurm` are the live checks: API server and node readiness, and a hello world batch job whose output is read from `/shared`.
 
 ## Release
 

@@ -15,10 +15,11 @@ Everything is a docker-compose project driven by a Makefile.
 
 ```
 docker-compose project `hpc-lab`
-├── admin               sshd + kubectl + helm + lab scripts (ubi9)
-├── k8s-control-plane   upstream Kubernetes control plane (kindest/node, kubeadm init on first boot)
-└── k8s-worker          Kubernetes workers (kindest/node, kubeadm join on first boot), 4 replicas
-                        k8s-worker-1 to k8s-worker-4, one per Slurm compute node; `make start-k8s workers=N` scales them
+├── admin                      sshd + kubectl + helm + lab scripts (ubi9)
+├── kubernetes-control-plane   upstream Kubernetes control plane (kindest/node, kubeadm init on first boot)
+└── kubernetes-worker          Kubernetes workers (kindest/node, kubeadm join on first boot), 4 replicas
+                               kubernetes-worker-1 to kubernetes-worker-4, one per Slurm compute node;
+                               `make start-kubernetes workers=N` scales them
 
 Kubernetes
 ├── cert-manager            namespace cert-manager
@@ -31,7 +32,7 @@ Kubernetes
                                                   /shared on login and compute nodes)
 ```
 
-Every container is configured by Chef: [Cinc Client](https://cinc.sh), the community build of Chef Infra Client, converges each component's cookbook (`admin/cookbook`, `k8s/cookbook`, `slurm/cookbook`) in local mode: at image build only the node's systemd unit that runs the first converge, everything else at container start.
+Every container is configured by Chef: [Cinc Client](https://cinc.sh), the community build of Chef Infra Client, converges each component's cookbook (`admin/cookbook`, `kubernetes/cookbook`, `slurm/cookbook`) in local mode: at image build only the node's systemd unit that runs the first converge, everything else at container start.
 The admin container is the operator's workstation: it holds the kubeconfig, kubectl, helm and the lab scripts, and is the only service reachable over SSH.
 The Kubernetes nodes are privileged containers built on `kindest/node`; on first boot a systemd unit runs `kubeadm init` on the control plane and `kubeadm join` on the workers.
 `make start-slurm` converges a recipe there that installs cert-manager, the Slinky operator and the Slurm chart with Helm.
@@ -66,7 +67,7 @@ Its root authorized key is the lab keypair `admin/ssh/id_ed25519` (gitignored): 
 | Where | Command | How it works |
 |---|---|---|
 | Admin node | `make ssh-admin` | SSH as root on `localhost:2200` with the lab key (`ssh -i admin/ssh/id_ed25519 -p 2200 root@localhost`) |
-| Kubernetes node | `make login service=k8s-control-plane` (or a worker, `k8s-worker-1` to `k8s-worker-4`) | a bash shell through `docker compose exec`; the nodes run no SSH server |
+| Kubernetes node | `make login service=kubernetes-control-plane` (or a worker, `kubernetes-worker-1` to `kubernetes-worker-4`) | a bash shell through `docker compose exec`; the nodes run no SSH server |
 | Slurm login node | `make ssh-slurm-login` | a shell through `kubectl exec` from the admin node into the login pod |
 | Slurm head node (slurmctld) | `make ssh-slurm-head` | the same, into the controller pod |
 | Slurm compute node | `make ssh-slurm-compute node=cmpt-1` | the same, into the slurmd pod of that node |
@@ -85,17 +86,17 @@ slurm-exec squeue      # run a command on the Slurm head node
 ```
 
 ```shell
-make help           # list the targets
-make test-k8s       # health check of the Kubernetes cluster
-make start-k8s workers=6  # scale the Kubernetes workers
-make test-slurm     # submit a hello world batch job
-make lint           # lint the Chef cookbooks and the shell scripts
-make test           # lint, then unit-test the Chef cookbooks
-make stop-slurm     # remove Slurm, keep Kubernetes running
-make start-slurm    # bring it back
-make stop-k8s       # freeze the whole lab
-make start-k8s      # resume it
-make clean          # destroy everything, including volumes
+make help                        # list the targets
+make test-kubernetes             # health check of the Kubernetes cluster
+make start-kubernetes workers=6  # scale the Kubernetes workers
+make test-slurm                  # submit a hello world batch job
+make lint                        # lint the Chef cookbooks and the shell scripts
+make test                        # lint, then unit-test the Chef cookbooks
+make stop-slurm                  # remove Slurm, keep Kubernetes running
+make start-slurm                 # bring it back
+make stop-kubernetes             # freeze the whole lab
+make start-kubernetes            # resume it
+make clean                       # destroy everything, including volumes
 ```
 
 ## Docs

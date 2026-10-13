@@ -33,7 +33,7 @@ labels:
     description: This doesn't seem right.
     color: E4E669
   - name: Kubernetes
-    description: Changes to the Kubernetes cluster (k8s/).
+    description: Changes to the Kubernetes cluster (kubernetes/).
     color: 326CE5
   - name: Question
     description: Further information is requested.

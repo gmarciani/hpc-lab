@@ -8,9 +8,9 @@ ConditionPathExists=!/etc/kubernetes/kubelet.conf
 
 [Service]
 Type=oneshot
-# k8s/.env.secrets.local (K8S_TOKEN), mounted by docker-compose.yaml.
-EnvironmentFile=<%= @hpc_lab_home %>/k8s.secrets.env
-ExecStart=/usr/bin/cinc-client -c <%= @hpc_lab_home %>/chef/client.rb -o recipe[hpc-lab-k8s]
+# kubernetes/.env.secrets.local (KUBERNETES_TOKEN), mounted by docker-compose.yaml.
+EnvironmentFile=<%= @hpc_lab_home %>/kubernetes.secrets.env
+ExecStart=/usr/bin/cinc-client -c <%= @hpc_lab_home %>/chef/client.rb -o recipe[hpc-lab-kubernetes]
 RemainAfterExit=yes
 
 [Install]

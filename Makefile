@@ -7,16 +7,16 @@ help:
 COMPOSE_FILE="docker-compose.yaml"
 SSH_KEY=admin/ssh/id_ed25519
 SSH_OPTS=-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -i ${SSH_KEY}
-# Kubernetes workers, the replicas of the k8s-worker service: `workers=N` scales
+# Kubernetes workers, the replicas of the kubernetes-worker service: `workers=N` scales
 # them; otherwise the lab keeps the workers it has, 4 on a fresh start.
-WORKERS=$(or $(workers),$(shell docker compose -f ${COMPOSE_FILE} ps --all --quiet k8s-worker 2>/dev/null | wc -l | awk '$$1 > 0 { print $$1 }'),4)
-# `service=k8s-worker-N` is replica N of the k8s-worker service.
-SERVICE=$(if $(filter k8s-worker-%,$(service)),--index $(service:k8s-worker-%=%) k8s-worker,$(service))
+WORKERS=$(or $(workers),$(shell docker compose -f ${COMPOSE_FILE} ps --all --quiet kubernetes-worker 2>/dev/null | wc -l | awk '$$1 > 0 { print $$1 }'),4)
+# `service=kubernetes-worker-N` is replica N of the kubernetes-worker service.
+SERVICE=$(if $(filter kubernetes-worker-%,$(service)),--index $(service:kubernetes-worker-%=%) kubernetes-worker,$(service))
 
 # Cookstyle and ChefSpec run in the Cinc Workstation image; no Ruby on the host.
-# `cookbook=admin` (or k8s, slurm) restricts lint-chef and test-chef to one cookbook.
+# `cookbook=admin` (or kubernetes, slurm) restricts lint-chef and test-chef to one cookbook.
 CHEF_RUN=docker run --rm -v $(CURDIR):/workspace -w /workspace cincproject/workstation:26.3.0
-COOKBOOKS=$(or $(cookbook),admin k8s slurm)
+COOKBOOKS=$(or $(cookbook),admin kubernetes slurm)
 # ShellCheck lints every tracked shell script, found by the shebang on its first
 # line (a shebang further down, e.g. in a docs example, does not count);
 # .shellcheckrc holds the checks disabled for the whole repo.
@@ -50,7 +50,7 @@ setup:
 build: docker-check
 	docker compose -f ${COMPOSE_FILE} build $(service)
 ## Build, start Kubernetes, deploy Slurm, then describe the lab
-start: build start-k8s start-slurm
+start: build start-kubernetes start-slurm
 	@$(MAKE) describe
 ## Stop the containers (service=NAME for one)
 stop: docker-check
@@ -79,26 +79,26 @@ describe:
 	-docker compose -f ${COMPOSE_FILE} exec -T admin kubectl get nodes
 	-docker compose -f ${COMPOSE_FILE} exec -T admin kubectl get pods --all-namespaces
 	-docker compose -f ${COMPOSE_FILE} exec -T admin slurm-exec sinfo
-## Last 500 log lines of a service (service=NAME, k8s-worker-N for a worker)
+## Last 500 log lines of a service (service=NAME, kubernetes-worker-N for a worker)
 get-logs:
 	docker compose -f ${COMPOSE_FILE} logs ${SERVICE} | tail -n 500
-## Bash shell in a service (service=NAME, k8s-worker-N for a worker)
+## Bash shell in a service (service=NAME, kubernetes-worker-N for a worker)
 login:
 	docker compose -f ${COMPOSE_FILE} exec -it ${SERVICE} /bin/bash
 
 ## Start the Kubernetes cluster (workers=N scales the workers)
-start-k8s: docker-check k8s/.env.secrets.local ${SSH_KEY}
+start-kubernetes: docker-check kubernetes/.env.secrets.local ${SSH_KEY}
 	@# Compose leaves the anonymous volumes of the replicas a scale-down removes;
 	@# remove the replicas beyond WORKERS, with their volumes, before scaling.
-	docker compose -f ${COMPOSE_FILE} ps --all --format '{{.Name}}' k8s-worker | awk -F- '$$NF > ${WORKERS}' | xargs -r docker rm --force --volumes
-	docker compose -f ${COMPOSE_FILE} up --detach --wait --scale k8s-worker=${WORKERS}
-	docker compose -f ${COMPOSE_FILE} exec -T admin k8s-wait ${WORKERS}
+	docker compose -f ${COMPOSE_FILE} ps --all --format '{{.Name}}' kubernetes-worker | awk -F- '$$NF > ${WORKERS}' | xargs -r docker rm --force --volumes
+	docker compose -f ${COMPOSE_FILE} up --detach --wait --scale kubernetes-worker=${WORKERS}
+	docker compose -f ${COMPOSE_FILE} exec -T admin kubernetes-wait ${WORKERS}
 ## Stop every container, keeping the cluster state
-stop-k8s: docker-check
+stop-kubernetes: docker-check
 	docker compose -f ${COMPOSE_FILE} stop
 ## Health check of the Kubernetes cluster
-test-k8s:
-	docker compose -f ${COMPOSE_FILE} exec -T admin k8s-test
+test-kubernetes:
+	docker compose -f ${COMPOSE_FILE} exec -T admin kubernetes-test
 ## Deploy or upgrade the Slurm cluster from the cookbook attributes
 start-slurm: docker-check
 	docker compose -f ${COMPOSE_FILE} exec -T admin slurm-deploy
@@ -143,11 +143,11 @@ ssh-key: ${SSH_KEY}
 	@echo "lab keypair: ${SSH_KEY} ($$(ssh-keygen -lf ${SSH_KEY}.pub))"
 ## Write a host kubeconfig and print the export to use it
 kubeconfig:
-	@docker compose -f ${COMPOSE_FILE} exec -T admin sed "s|https://k8s-control-plane:6443|https://127.0.0.1:$$(docker compose -f ${COMPOSE_FILE} port k8s-control-plane 6443 | cut -d: -f2)|" /root/.kube/config > k8s/kubeconfig.local
-	@echo "export KUBECONFIG=$(CURDIR)/k8s/kubeconfig.local"
+	@docker compose -f ${COMPOSE_FILE} exec -T admin sed "s|https://kubernetes-control-plane:6443|https://127.0.0.1:$$(docker compose -f ${COMPOSE_FILE} port kubernetes-control-plane 6443 | cut -d: -f2)|" /root/.kube/config > kubernetes/kubeconfig.local
+	@echo "export KUBECONFIG=$(CURDIR)/kubernetes/kubeconfig.local"
 
-k8s/.env.secrets.local:
-	@printf '# kubeadm bootstrap token shared by the control plane and the workers. Generated.\nK8S_TOKEN=%s\n' "$$(openssl rand -hex 3).$$(openssl rand -hex 8)" > $@
+kubernetes/.env.secrets.local:
+	@printf '# kubeadm bootstrap token shared by the control plane and the workers. Generated.\nKUBERNETES_TOKEN=%s\n' "$$(openssl rand -hex 3).$$(openssl rand -hex 8)" > $@
 # Generated once; make never rebuilds an existing file, so a keypair is kept.
 ${SSH_KEY}:
 	@mkdir -p admin/ssh

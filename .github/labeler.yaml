@@ -22,7 +22,7 @@ Admin:
 Kubernetes:
   - changed-files:
       - any-glob-to-any-file:
-        - k8s/**
+        - kubernetes/**
 Slurm:
   - changed-files:
       - any-glob-to-any-file:

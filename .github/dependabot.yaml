@@ -2,8 +2,7 @@ version: 2
 updates:
   - package-ecosystem: "docker"
     directories:
-      - "/k8s/control-plane"
-      - "/k8s/worker"
+      - "/kubernetes"
       - "/admin"
     schedule:
       interval: "monthly"

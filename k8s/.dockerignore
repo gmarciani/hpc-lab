@@ -1,5 +1,0 @@
-# Build context of k8s/Dockerfile: client.rb and the cookbook, without its specs.
-*
-!client.rb
-!cookbook/
-cookbook/spec/
