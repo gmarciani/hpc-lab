@@ -12,3 +12,10 @@ SchedulerType=<%= @conf['SchedulerType'] %>
 # Cores and memory are consumable resources, allocated per job on a node.
 SelectType=<%= @conf['SelectType'] %>
 SelectTypeParameters=<%= @conf['SelectTypeParameters'] %>
+
+# Memory of a job that does not ask for any (--mem, --mem-per-cpu), per allocated
+# CPU; without it the job takes all the memory of its node.
+DefMemPerCPU=<%= @conf['DefMemPerCPU'] %>
+
+# Each job step runs in its own cgroup, limited to the memory of the job (cgroup.conf).
+TaskPlugin=<%= @conf['TaskPlugin'] %>
