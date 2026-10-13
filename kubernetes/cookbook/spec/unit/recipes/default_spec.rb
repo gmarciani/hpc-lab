@@ -1,15 +1,15 @@
 require 'spec_helper'
 
-describe 'hpc-lab-k8s::default' do
+describe 'hpc-lab-kubernetes::default' do
   let(:token) { 'abcdef.0123456789abcdef' }
-  let(:hostname) { 'k8s-control-plane' }
+  let(:hostname) { 'kubernetes-control-plane' }
   let(:chef_run) { ChefSpec::SoloRunner.new { |node| node.automatic['hostname'] = hostname }.converge(described_recipe) }
 
   around do |example|
-    previous = ENV.fetch('K8S_TOKEN', nil)
-    ENV['K8S_TOKEN'] = token
+    previous = ENV.fetch('KUBERNETES_TOKEN', nil)
+    ENV['KUBERNETES_TOKEN'] = token
     example.run
-    ENV['K8S_TOKEN'] = previous
+    ENV['KUBERNETES_TOKEN'] = previous
   end
 
   before do
@@ -25,8 +25,8 @@ describe 'hpc-lab-k8s::default' do
     expect(chef_run).to render_file('/etc/kubeadm.conf')
       .with_content(/^kubernetesVersion: v1\.36\.4$/)
       .with_content(/^clusterName: hpc-lab$/)
-      .with_content(/^controlPlaneEndpoint: "k8s-control-plane:6443"$/)
-      .with_content(/^  certSANs: \[localhost, "127\.0\.0\.1", "k8s-control-plane"\]$/)
+      .with_content(/^controlPlaneEndpoint: "kubernetes-control-plane:6443"$/)
+      .with_content(/^  certSANs: \[localhost, "127\.0\.0\.1", "kubernetes-control-plane"\]$/)
       .with_content(%r{podSubnet: "10\.244\.0\.0/16"})
       .with_content(%r{serviceSubnet: "10\.96\.0\.0/16"})
   end
@@ -47,24 +47,24 @@ describe 'hpc-lab-k8s::default' do
   end
 
   it 'initialises the cluster on the control-plane host' do
-    expect(chef_run).to include_recipe('hpc-lab-k8s::control_plane')
-    expect(chef_run).not_to include_recipe('hpc-lab-k8s::worker')
+    expect(chef_run).to include_recipe('hpc-lab-kubernetes::control_plane')
+    expect(chef_run).not_to include_recipe('hpc-lab-kubernetes::worker')
   end
 
   context 'on a worker host' do
-    let(:hostname) { 'k8s-worker-1' }
+    let(:hostname) { 'kubernetes-worker-1' }
 
     it 'joins the cluster' do
-      expect(chef_run).to include_recipe('hpc-lab-k8s::worker')
-      expect(chef_run).not_to include_recipe('hpc-lab-k8s::control_plane')
+      expect(chef_run).to include_recipe('hpc-lab-kubernetes::worker')
+      expect(chef_run).not_to include_recipe('hpc-lab-kubernetes::control_plane')
     end
   end
 
-  context 'without K8S_TOKEN' do
+  context 'without KUBERNETES_TOKEN' do
     let(:token) { '' }
 
     it 'fails before converging any resource' do
-      expect { chef_run }.to raise_error(RuntimeError, /K8S_TOKEN is not set/)
+      expect { chef_run }.to raise_error(RuntimeError, /KUBERNETES_TOKEN is not set/)
     end
   end
 end

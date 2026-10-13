@@ -1,6 +1,6 @@
 require 'spec_helper'
 
-describe 'hpc-lab-k8s::control_plane' do
+describe 'hpc-lab-kubernetes::control_plane' do
   let(:bootstrapped) { false }
   let(:applied) { false }
   let(:etcd_data) { false }
@@ -20,7 +20,7 @@ describe 'hpc-lab-k8s::control_plane' do
 
   it 'creates the bootstrap token from the environment, against the admin kubeconfig' do
     expect(chef_run).to run_execute('kubeadm token create')
-      .with(command: 'kubeadm token create "$K8S_TOKEN" --ttl 0', environment: { 'KUBECONFIG' => '/etc/kubernetes/admin.conf' })
+      .with(command: 'kubeadm token create "$KUBERNETES_TOKEN" --ttl 0', environment: { 'KUBECONFIG' => '/etc/kubernetes/admin.conf' })
   end
 
   it 'applies the CNI with the pod subnet and the storage class' do

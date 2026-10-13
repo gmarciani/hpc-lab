@@ -1,4 +1,4 @@
-name 'hpc-lab-k8s'
+name 'hpc-lab-kubernetes'
 maintainer 'Giacomo Marciani'
 license 'MIT'
 description 'Kubernetes nodes of the lab: kubeadm configuration, first-boot init and join'

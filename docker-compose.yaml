@@ -5,8 +5,8 @@ name: hpc-lab
 # state lives in anonymous volumes so a container recreate keeps the cluster.
 # Chef configures the image at build and runs kubeadm on first boot; the cookbook
 # is mounted so a runtime converge uses the working copy.
-x-k8s-node: &k8s-node
-  build: k8s
+x-kubernetes-node: &kubernetes-node
+  build: kubernetes
   # systemd, containerd and kubelet mount filesystems, manage cgroups and create
   # network namespaces; the default seccomp and AppArmor profiles block them.
   privileged: true
@@ -26,7 +26,7 @@ services:
     restart: unless-stopped
     # The entrypoint converges the cookbook (packages, kubectl, helm, lab scripts)
     # before starting sshd, so a listening sshd means the lab scripts are installed;
-    # `make start-k8s` waits for it with `docker compose up --wait`.
+    # `make start-kubernetes` waits for it with `docker compose up --wait`.
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/22"]
       interval: 5s
@@ -40,39 +40,39 @@ services:
       - ./admin/cookbook:/opt/hpc-lab/chef/cookbooks/hpc-lab-admin:ro
       - ./slurm/cookbook:/opt/hpc-lab/chef/cookbooks/hpc-lab-slurm:ro
     depends_on:
-      - k8s-control-plane
+      - kubernetes-control-plane
 
-  k8s-control-plane:
-    <<: *k8s-node
+  kubernetes-control-plane:
+    <<: *kubernetes-node
     # Docker's default hostname is the container id; kubelet names the node after it.
-    hostname: k8s-control-plane
+    hostname: kubernetes-control-plane
     ports:
       - "127.0.0.1:6443:6443"  # Kubernetes API
     volumes:
       - /var
       - /etc/kubernetes
       - /lib/modules:/lib/modules:ro
-      - ./k8s/.env.secrets.local:/opt/hpc-lab/k8s.secrets.env:ro
-      - ./k8s/cookbook:/opt/hpc-lab/chef/cookbooks/hpc-lab-k8s:ro
+      - ./kubernetes/.env.secrets.local:/opt/hpc-lab/kubernetes.secrets.env:ro
+      - ./kubernetes/cookbook:/opt/hpc-lab/chef/cookbooks/hpc-lab-kubernetes:ro
       - kubeconfig:/output
       - shared:/shared
 
-  # The workers are replicas of this one service: `make start-k8s workers=N`
-  # scales it. Each replica joins as k8s-worker-<index>, its compose container
+  # The workers are replicas of this one service: `make start-kubernetes workers=N`
+  # scales it. Each replica joins as kubernetes-worker-<index>, its compose container
   # index. The Slinky operator runs at most one slurmd pod per Kubernetes node,
   # so there is one worker per Slurm compute node: 2 in main, 2 in main-gpu.
-  k8s-worker:
-    <<: *k8s-node
+  kubernetes-worker:
+    <<: *kubernetes-node
     deploy:
       replicas: 4
     depends_on:
-      - k8s-control-plane
+      - kubernetes-control-plane
     volumes:
       - /var
       - /etc/kubernetes
       - /lib/modules:/lib/modules:ro
-      - ./k8s/.env.secrets.local:/opt/hpc-lab/k8s.secrets.env:ro
-      - ./k8s/cookbook:/opt/hpc-lab/chef/cookbooks/hpc-lab-k8s:ro
+      - ./kubernetes/.env.secrets.local:/opt/hpc-lab/kubernetes.secrets.env:ro
+      - ./kubernetes/cookbook:/opt/hpc-lab/chef/cookbooks/hpc-lab-kubernetes:ro
       - shared:/shared
 
 volumes:

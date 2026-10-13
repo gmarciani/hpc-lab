@@ -12,4 +12,4 @@
 # Secrets and generated files
 .env.secrets.*
 admin/ssh/
-k8s/kubeconfig.local
+kubernetes/kubeconfig.local

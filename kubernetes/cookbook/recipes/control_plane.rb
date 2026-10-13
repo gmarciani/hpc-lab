@@ -1,5 +1,5 @@
 # kubeadm init, bootstrap token, CNI, storage class and the kubeconfig for admin.
-k8s = node['hpc-lab-k8s']
+kubernetes = node['hpc-lab-kubernetes']
 kubelet_conf = '/etc/kubernetes/kubelet.conf'
 admin_conf = { 'KUBECONFIG' => '/etc/kubernetes/admin.conf' }
 
@@ -14,16 +14,16 @@ execute 'kubeadm init' do
   not_if { ::File.exist?(kubelet_conf) }
 end
 
-# K8S_TOKEN comes from the unit's EnvironmentFile; the guard runs in the same environment.
+# KUBERNETES_TOKEN comes from the unit's EnvironmentFile; the guard runs in the same environment.
 execute 'kubeadm token create' do
-  command 'kubeadm token create "$K8S_TOKEN" --ttl 0'
+  command 'kubeadm token create "$KUBERNETES_TOKEN" --ttl 0'
   environment admin_conf
-  not_if 'kubeadm token list | grep -qF "$K8S_TOKEN"'
+  not_if 'kubeadm token list | grep -qF "$KUBERNETES_TOKEN"'
 end
 
 # kind's bundled CNI manifest carries a Go template placeholder for the pod subnet.
 execute 'kubectl apply cni' do
-  command "sed 's|{{ .PodSubnet }}|#{k8s['pod_subnet']}|g' /kind/manifests/default-cni.yaml | kubectl apply -f -"
+  command "sed 's|{{ .PodSubnet }}|#{kubernetes['pod_subnet']}|g' /kind/manifests/default-cni.yaml | kubectl apply -f -"
   environment admin_conf
   not_if 'kubectl -n kube-system get daemonset kindnet'
 end
