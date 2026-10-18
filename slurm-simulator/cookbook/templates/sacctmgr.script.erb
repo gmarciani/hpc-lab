@@ -1,0 +1,14 @@
+# Accounting of the simulated cluster, which slurm-simulate loads with sacctmgr
+# before each simulation: the cluster, its accounts and their users, the system
+# users of users.sim. Jobs of a workload charge an account with -A.
+add cluster Name=<%= @simulator['cluster_name'] %>
+
+# Accounts, with equal fairshare.
+add account Name=account1 Fairshare=100
+add account Name=account2 Fairshare=100
+
+# Users and the account they charge by default.
+add user Name=user1 DefaultAccount=account1
+add user Name=user2 DefaultAccount=account1
+add user Name=user3 DefaultAccount=account2
+add user Name=user4 DefaultAccount=account2

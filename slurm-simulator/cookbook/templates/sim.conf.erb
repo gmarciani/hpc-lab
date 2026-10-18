@@ -1,0 +1,9 @@
+# Simulation parameters, read by the simulated controller next to slurm.conf.
+# slurm-simulate gives the workload (events file) and the delay before its first
+# event on the command line.
+# Simulated clock at the start of a simulation, Unix time: 2022-01-01T00:00:00Z.
+TimeStart = 1640995200
+# Speed of the simulated clock against the real one while the controller computes.
+ClockScaling = 1.0
+# Simulated seconds the controller keeps running once every job has finished, then exits.
+TimeAfterAllEventsDone = 10

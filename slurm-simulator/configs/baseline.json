@@ -1,0 +1,9 @@
+{
+  "hpc-lab-slurm-simulator": {
+    "nodesets": {
+      "cmpt": {
+        "replicas": 4
+      }
+    }
+  }
+}

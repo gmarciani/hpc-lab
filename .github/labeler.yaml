@@ -27,3 +27,7 @@ Slurm:
   - changed-files:
       - any-glob-to-any-file:
         - slurm/**
+Slurm Simulator:
+  - changed-files:
+      - any-glob-to-any-file:
+        - slurm-simulator/**

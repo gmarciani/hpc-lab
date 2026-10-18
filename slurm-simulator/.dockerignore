@@ -1,0 +1,4 @@
+# Build context of slurm-simulator/Dockerfile: client.rb and the entrypoint only.
+*
+!client.rb
+!slurm-simulator-entrypoint

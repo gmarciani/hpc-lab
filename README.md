@@ -11,15 +11,19 @@
 
 A personal High Performance Computing lab for experimenting with cluster administration and HPC workloads on a [Slurm](https://slurm.schedmd.com) on [Kubernetes](https://kubernetes.io) environment.
 On a single workstation it runs a Slurm cluster with a login node and a REST API on top of an upstream Kubernetes cluster.
+Next to it, the [Slurm Simulator](https://github.com/ubccr-slurm-simulator/slurm_sim_tools) replays job workloads on a simulated clock, much faster than real time, to compare scheduling policies and cluster sizes on a simulated cluster with the lab's nodes and scheduling settings.
 Everything is a docker-compose project driven by a Makefile.
 
 ```
 docker-compose project `hpc-lab`
 ├── admin                      sshd + kubectl + helm + lab scripts (ubi9)
 ├── kubernetes-control-plane   upstream Kubernetes control plane (kindest/node, kubeadm init on first boot)
-└── kubernetes-worker          Kubernetes workers (kindest/node, kubeadm join on first boot), 4 replicas
-                               kubernetes-worker-1 to kubernetes-worker-4, one per Slurm compute node;
-                               `make start-kubernetes workers=N` scales them
+├── kubernetes-worker          Kubernetes workers (kindest/node, kubeadm join on first boot), 4 replicas
+│                              kubernetes-worker-1 to kubernetes-worker-4, one per Slurm compute node;
+│                              `make start-kubernetes workers=N` scales them
+└── slurm-simulator            UB CCR Slurm Simulator (Slurm 23.02) + MariaDB (ubuntu 22.04): a simulated cluster,
+                               one partition of nodes with CPUs and GPUs, whose size and policy (custom ones as
+                               plugins) each experiment's config sets; `make simulate-slurm` replays a workload
 
 Kubernetes
 ├── cert-manager            namespace cert-manager
@@ -32,10 +36,11 @@ Kubernetes
                                                   /shared on login and compute nodes)
 ```
 
-Every container is configured by Chef: [Cinc Client](https://cinc.sh), the community build of Chef Infra Client, converges each component's cookbook (`admin/cookbook`, `kubernetes/cookbook`, `slurm/cookbook`) in local mode: at image build only the node's systemd unit that runs the first converge, everything else at container start.
+Every container is configured by Chef: [Cinc Client](https://cinc.sh), the community build of Chef Infra Client, converges each component's cookbook (`admin/cookbook`, `kubernetes/cookbook`, `slurm/cookbook`, `slurm-simulator/cookbook`) in local mode: at image build only the node's systemd unit that runs the first converge, everything else at container start.
 The admin container is the operator's workstation: it holds the kubeconfig, kubectl, helm and the lab scripts, and is the only service reachable over SSH.
 The Kubernetes nodes are privileged containers built on `kindest/node`; on first boot a systemd unit runs `kubeadm init` on the control plane and `kubeadm join` on the workers.
 `make start-slurm` converges a recipe there that installs cert-manager, the Slinky operator and the Slurm chart with Helm.
+The slurm-simulator container builds the simulator from source on its first start and needs no privileges and nothing else of the lab; it is a separate service, on its own network, with targets of its own (`*-slurm-simulator`), and the lab targets (`make start`, `stop`, ...) leave it alone, but `make clean`, which destroys everything.
 
 | Component | Local endpoint |
 |---|---|
@@ -96,12 +101,16 @@ make stop-slurm                  # remove Slurm, keep Kubernetes running
 make start-slurm                 # bring it back
 make stop-kubernetes             # freeze the whole lab
 make start-kubernetes            # resume it
-make clean                       # destroy everything, including volumes
+make start-slurm-simulator       # start the Slurm Simulator, independent of the clusters
+make simulate-slurm              # simulate lab.events on 4 nodes (config baseline.json) and plot it, in slurm-simulator/results/lab-baseline_<time>
+make simulate-slurm config=sjf-4.json    # the same workload under the Shortest Job First policy, in .../lab-sjf-4_<time>
+make report-slurm runs="lab-baseline lab-sjf-4"   # plot the latest of both: utilization, throughput, jobs completed
+make clean                       # destroy everything, the Slurm Simulator and volumes included
 ```
 
 ## Docs
 
-- [DEVELOPMENT.md](DEVELOPMENT.md): prerequisites, setup, project structure, commands, and operating the Kubernetes and Slurm clusters (scaling nodes, adding partitions, submitting jobs).
+- [DEVELOPMENT.md](DEVELOPMENT.md): prerequisites, setup, project structure, commands, operating the Kubernetes and Slurm clusters (scaling nodes, adding partitions, submitting jobs) and simulating scheduling policies with the Slurm Simulator.
 - [CONTRIBUTING.md](CONTRIBUTING.md) and [CHANGELOG.md](CHANGELOG.md).
 
 ## Issues

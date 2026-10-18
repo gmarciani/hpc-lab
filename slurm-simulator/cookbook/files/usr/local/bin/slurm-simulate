@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# Simulate a workload on the simulated cluster: build the plugins of
+# slurm-simulator/plugins and render the cluster from the cookbook attributes
+# (recipes hpc-lab-slurm-simulator::plugins and ::simulation), replay the workload with
+# the Slurm Simulator, show when each job ran and summarize the waits, then plot the
+# run (slurm-simulate-report): resource utilization, throughput, jobs completed.
+#   slurm-simulate [WORKLOAD [RUN [CONFIG]]]
+# WORKLOAD is an events file in slurm-simulator/workloads, lab.events by default.
+# CONFIG is a JSON file in slurm-simulator/configs whose attributes override the
+# cookbook's for this run only: the policy, and the nodes of every node set, which
+# it must declare; baseline.json by default.
+# RUN names the results folder in slurm-simulator/results, by default the workload
+# and config names; the folder is RUN_<time of the run, UTC>, e.g.
+# lab-sjf-4_2026-10-23_22-15-04, so every run keeps its results.
+# HPC_LAB_HOME is set by the Dockerfile.
+set -euo pipefail
+SIM_HOME="${HPC_LAB_HOME}/slurm-simulator"
+WORKLOAD="${1:-lab.events}"
+CONFIG="${3:-baseline.json}"
+DEFAULT_RUN="${WORKLOAD%.events}-${CONFIG%.json}"
+RUN="${2:-${DEFAULT_RUN}}_$(date -u +%Y-%m-%d_%H-%M-%S)"
+RESULTS="${SIM_HOME}/results/${RUN}"
+
+if [ ! -f "${SIM_HOME}/workloads/${WORKLOAD}" ]; then
+  echo "no workload ${WORKLOAD} in slurm-simulator/workloads" >&2
+  exit 1
+fi
+if [ ! -f "${SIM_HOME}/configs/${CONFIG}" ]; then
+  echo "no config ${CONFIG} in slurm-simulator/configs" >&2
+  exit 1
+fi
+
+# The config's attributes, plus its name (the config attribute), which makes the
+# simulation recipe check that the config declares the nodes of every node set.
+ATTRIBUTES=$(mktemp --suffix=.json)
+trap 'rm -f "${ATTRIBUTES}"' EXIT
+python3 - "${SIM_HOME}/configs/${CONFIG}" "${CONFIG}" "${ATTRIBUTES}" <<'MERGE'
+import json
+import sys
+
+source, name, target = sys.argv[1:]
+with open(source) as config:
+    attributes = json.load(config)
+attributes.setdefault('hpc-lab-slurm-simulator', {})['config'] = name
+with open(target, 'w') as merged:
+    json.dump(attributes, merged)
+MERGE
+
+# -j adds them over the cookbook's for this converge only: with a run list
+# override, Cinc saves no node state, so the next run starts from the cookbook.
+cinc-client -c "${HPC_LAB_HOME}/chef/client.rb" -j "${ATTRIBUTES}" \
+  -o 'recipe[hpc-lab-slurm-simulator::plugins],recipe[hpc-lab-slurm-simulator::simulation]'
+
+# A simulation that failed or was interrupted leaves slurmsim or its daemons
+# running, and slurmsim refuses to start while they are: stop them first. Once
+# slurmsim is gone, the init process reaps the daemons.
+SLURMSIM="${SIM_HOME}/tools/bin/slurmsim"
+DAEMONS='slurmctld|slurmdbd|slurmd'
+pkill -KILL -f "${SLURMSIM}" || true
+pkill -KILL -x "${DAEMONS}" || true
+while pgrep -x "${DAEMONS}" >/dev/null; do sleep 1; done
+# The controller log of the previous run, which the watch below must not read.
+CTLD_LOG="${SIM_HOME}/log/slurmctld.log"
+rm -f "${CTLD_LOG}"
+
+# -d deletes the logs, state, accounting database and results of the previous run;
+# -dtstart is the simulated time from the controller start to the first event.
+"${SLURMSIM}" -v run_sim -d \
+  -s "${SIM_HOME}/slurm" \
+  -e "${SIM_HOME}/etc" \
+  -a "${SIM_HOME}/etc/sacctmgr.script" \
+  -w "${SIM_HOME}/workloads/${WORKLOAD}" \
+  -r "${RESULTS}" \
+  -dtstart 30 &
+SLURMSIM_PID=$!
+
+# A job the simulated cluster rejects at submission (one asking for more than any
+# node has) stays in the simulator's queue, so the simulation would never end:
+# stop it, naming the job and the reason Slurm gives.
+while kill -0 "${SLURMSIM_PID}" 2>/dev/null; do
+  if grep -q 'Batch job submission failed' "${CTLD_LOG}" 2>/dev/null; then
+    pkill -KILL -f "${SLURMSIM}" || true
+    pkill -KILL -x "${DAEMONS}" || true
+    # The job is the last one submitted before the rejection (... -J jobid_<n> ...),
+    # and the reason is the line just before it.
+    job=$(sed -n '/Batch job submission failed/q;/SIM_SUBMIT_BATCH_JOB/p' "${CTLD_LOG}" | tail -n1 | grep -o -- '-J [^ ]*' || true)
+    reason=$(grep -B1 -m1 'Batch job submission failed' "${CTLD_LOG}" | head -n1 | sed 's/.*_slurm_rpc_submit_batch_job: //' || true)
+    echo "the simulated cluster rejected job ${job#-J }: ${reason:-see ${CTLD_LOG}}" >&2
+    exit 1
+  fi
+  sleep 1
+done
+wait "${SLURMSIM_PID}"
+# The simulated slurmctld dumps core as it exits at the end of a simulation, after
+# writing every result, into the results folder, its working directory.
+rm -f "${RESULTS}/core"
+# What produced the results: the cluster and policy (slurm.conf, gres.conf, the
+# config), and the workload.
+cp "${SIM_HOME}/etc/slurm.conf" "${SIM_HOME}/etc/gres.conf" "${SIM_HOME}/configs/${CONFIG}" \
+  "${SIM_HOME}/workloads/${WORKLOAD}" "${RESULTS}/"
+
+# slurm_acct.out is sacct --parsable2 of the simulated jobs: one header line, then one
+# line per job with JobID|JobIDRaw|Cluster|Partition|...; cut keeps Partition, User,
+# Submit, Start, End, State, NodeList and JobName.
+echo
+cut -d'|' -f4,8,10,12,13,16,24,25 "${RESULTS}/slurm_acct.out" | column -t -s'|'
+echo
+python3 - "${RESULTS}/slurm_acct.out" <<'SUMMARY'
+import csv
+import sys
+from datetime import datetime
+
+with open(sys.argv[1]) as acct:
+    jobs = list(csv.DictReader(acct, delimiter='|'))
+if not jobs:
+    sys.exit(f'no finished job in {sys.argv[1]}')
+time = datetime.fromisoformat
+waits = [(time(job['Start']) - time(job['Submit'])).total_seconds() for job in jobs]
+makespan = (max(time(job['End']) for job in jobs) - min(time(job['Submit']) for job in jobs)).total_seconds()
+print(f'{len(jobs)} jobs, mean wait {sum(waits) / len(waits):.0f} s, max wait {max(waits):.0f} s, makespan {makespan:.0f} s')
+SUMMARY
+slurm-simulate-report "${RUN}"

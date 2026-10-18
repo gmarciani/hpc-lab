@@ -2,8 +2,9 @@ version: 2
 updates:
   - package-ecosystem: "docker"
     directories:
-      - "/kubernetes"
       - "/admin"
+      - "/kubernetes"
+      - "/slurm-simulator"
     schedule:
       interval: "monthly"
   - package-ecosystem: "github-actions"

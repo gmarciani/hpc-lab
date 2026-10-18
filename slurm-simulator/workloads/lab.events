@@ -1,0 +1,32 @@
+-dt 0 -e submit_batch_job | -J jobid_1 -sim-walltime 3600 --uid=user1 -A account1 -p main -q normal -t 01:05:00 -n 2 --ntasks-per-node=2 --gres=gpu:a100:1,gpu:h100:1 pseudo.job
+-dt 5 -e submit_batch_job | -J jobid_2 -sim-walltime 3600 --uid=user1 -A account1 -p main -q normal -t 01:05:00 -n 2 --ntasks-per-node=2 --gres=gpu:a100:1,gpu:h100:1 pseudo.job
+-dt 10 -e submit_batch_job | -J jobid_3 -sim-walltime 3600 --uid=user1 -A account1 -p main -q normal -t 01:05:00 -n 2 --ntasks-per-node=2 --gres=gpu:a100:1,gpu:h100:1 pseudo.job
+-dt 15 -e submit_batch_job | -J jobid_4 -sim-walltime 3600 --uid=user1 -A account1 -p main -q normal -t 01:05:00 -n 2 --ntasks-per-node=2 --gres=gpu:a100:1,gpu:h100:1 pseudo.job
+-dt 20 -e submit_batch_job | -J jobid_5 -sim-walltime 3600 --uid=user1 -A account1 -p main -q normal -t 01:05:00 -n 2 --ntasks-per-node=2 --gres=gpu:a100:1,gpu:h100:1 pseudo.job
+-dt 25 -e submit_batch_job | -J jobid_6 -sim-walltime 3600 --uid=user1 -A account1 -p main -q normal -t 01:05:00 -n 2 --ntasks-per-node=2 --gres=gpu:a100:1,gpu:h100:1 pseudo.job
+-dt 30 -e submit_batch_job | -J jobid_7 -sim-walltime 3600 --uid=user1 -A account1 -p main -q normal -t 01:05:00 -n 2 --ntasks-per-node=2 --gres=gpu:a100:1,gpu:h100:1 pseudo.job
+-dt 35 -e submit_batch_job | -J jobid_8 -sim-walltime 3600 --uid=user1 -A account1 -p main -q normal -t 01:05:00 -n 2 --ntasks-per-node=2 --gres=gpu:a100:1,gpu:h100:1 pseudo.job
+-dt 60 -e submit_batch_job | -J jobid_9 -sim-walltime 345 --uid=user1 -A account1 -p main -q normal -t 00:08:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 70 -e submit_batch_job | -J jobid_10 -sim-walltime 257 --uid=user1 -A account1 -p main -q normal -t 00:07:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 80 -e submit_batch_job | -J jobid_11 -sim-walltime 382 --uid=user1 -A account1 -p main -q normal -t 00:09:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 90 -e submit_batch_job | -J jobid_12 -sim-walltime 204 --uid=user1 -A account1 -p main -q normal -t 00:06:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 100 -e submit_batch_job | -J jobid_13 -sim-walltime 217 --uid=user1 -A account1 -p main -q normal -t 00:06:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 110 -e submit_batch_job | -J jobid_14 -sim-walltime 454 --uid=user1 -A account1 -p main -q normal -t 00:10:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 120 -e submit_batch_job | -J jobid_15 -sim-walltime 228 --uid=user1 -A account1 -p main -q normal -t 00:06:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 130 -e submit_batch_job | -J jobid_16 -sim-walltime 367 --uid=user1 -A account1 -p main -q normal -t 00:09:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 140 -e submit_batch_job | -J jobid_17 -sim-walltime 478 --uid=user1 -A account1 -p main -q normal -t 00:10:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 150 -e submit_batch_job | -J jobid_18 -sim-walltime 209 --uid=user1 -A account1 -p main -q normal -t 00:06:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 160 -e submit_batch_job | -J jobid_19 -sim-walltime 439 --uid=user1 -A account1 -p main -q normal -t 00:10:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 170 -e submit_batch_job | -J jobid_20 -sim-walltime 289 --uid=user1 -A account1 -p main -q normal -t 00:07:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 180 -e submit_batch_job | -J jobid_21 -sim-walltime 199 --uid=user1 -A account1 -p main -q normal -t 00:06:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 190 -e submit_batch_job | -J jobid_22 -sim-walltime 224 --uid=user1 -A account1 -p main -q normal -t 00:06:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 200 -e submit_batch_job | -J jobid_23 -sim-walltime 402 --uid=user1 -A account1 -p main -q normal -t 00:09:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 210 -e submit_batch_job | -J jobid_24 -sim-walltime 394 --uid=user1 -A account1 -p main -q normal -t 00:09:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 220 -e submit_batch_job | -J jobid_25 -sim-walltime 215 --uid=user1 -A account1 -p main -q normal -t 00:06:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 230 -e submit_batch_job | -J jobid_26 -sim-walltime 303 --uid=user1 -A account1 -p main -q normal -t 00:08:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 240 -e submit_batch_job | -J jobid_27 -sim-walltime 226 --uid=user1 -A account1 -p main -q normal -t 00:06:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 250 -e submit_batch_job | -J jobid_28 -sim-walltime 462 --uid=user1 -A account1 -p main -q normal -t 00:10:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 260 -e submit_batch_job | -J jobid_29 -sim-walltime 397 --uid=user1 -A account1 -p main -q normal -t 00:09:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 270 -e submit_batch_job | -J jobid_30 -sim-walltime 210 --uid=user1 -A account1 -p main -q normal -t 00:06:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 280 -e submit_batch_job | -J jobid_31 -sim-walltime 469 --uid=user1 -A account1 -p main -q normal -t 00:10:00 -n 2 --ntasks-per-node=2 pseudo.job
+-dt 290 -e submit_batch_job | -J jobid_32 -sim-walltime 243 --uid=user1 -A account1 -p main -q normal -t 00:07:00 -n 2 --ntasks-per-node=2 pseudo.job

@@ -75,6 +75,42 @@ services:
       - ./kubernetes/cookbook:/opt/hpc-lab/chef/cookbooks/hpc-lab-kubernetes:ro
       - shared:/shared
 
+  # The Slurm Simulator: Slurm's own controller replays a workload on a simulated
+  # clock, to compare scheduling policies without a cluster (make simulate-slurm).
+  # It needs nothing else of the lab and no privileges, and has a lifecycle of its
+  # own: the profile leaves it out of every compose command that does not name it
+  # (`docker compose up`, `build`, `stop`), so the lab targets do not touch it but
+  # make clean, which destroys everything, and the make targets *-slurm-simulator
+  # manage it.
+  slurm-simulator:
+    build: slurm-simulator
+    profiles: [slurm-simulator]
+    restart: unless-stopped
+    # An init process as PID 1 reaps the daemons of a simulation that lose their
+    # parent when it fails; MariaDB, the main process, would leave them as zombies.
+    init: true
+    # The entrypoint converges the cookbook (packages, the simulator build, the
+    # simulated cluster) before starting MariaDB, so a responding MariaDB means the
+    # simulator is ready. The first start builds the simulator, a few minutes, which
+    # the start period allows for.
+    healthcheck:
+      test: ["CMD", "mysqladmin", "--silent", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 20m
+    volumes:
+      - ./slurm-simulator/cookbook:/opt/hpc-lab/chef/cookbooks/hpc-lab-slurm-simulator:ro
+      - ./slurm-simulator/workloads:/opt/hpc-lab/slurm-simulator/workloads:ro
+      - ./slurm-simulator/plugins:/opt/hpc-lab/slurm-simulator/plugins:ro
+      - ./slurm-simulator/configs:/opt/hpc-lab/slurm-simulator/configs:ro
+      - ./slurm-simulator/results:/opt/hpc-lab/slurm-simulator/results
+    # Its own network: it talks to nothing else of the lab, and needs nothing of it.
+    networks: [slurm-simulator]
+
+networks:
+  slurm-simulator:  # the Slurm Simulator alone; it talks to nothing else of the lab
+
 volumes:
   kubeconfig:  # admin kubeconfig, written by the control plane and read by the admin container
   shared:      # /shared on every Kubernetes node, mounted by the Slurm pods as the cluster-wide shared directory

@@ -1,0 +1,7 @@
+name 'hpc-lab-slurm-simulator'
+maintainer 'Giacomo Marciani'
+license 'MIT'
+description 'Slurm Simulator node of the lab: the UB CCR Slurm Simulator, its accounting database and the simulated cluster'
+version '1.0.0'
+chef_version '>= 18.0'
+supports 'ubuntu'

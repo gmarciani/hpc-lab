@@ -1,0 +1,12 @@
+{
+  "hpc-lab-slurm-simulator": {
+    "nodesets": {
+      "cmpt": {
+        "replicas": 4
+      }
+    },
+    "slurm_conf": {
+      "PriorityType": "priority/sjf"
+    }
+  }
+}
