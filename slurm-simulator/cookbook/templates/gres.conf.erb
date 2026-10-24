@@ -1,0 +1,9 @@
+# gres.conf of the simulated cluster: the GPUs of each node set, one line per GPU
+# type. Reference: https://slurm.schedmd.com/gres.conf.html
+# There is no hardware to detect: every GPU is declared here.
+AutoDetect=off
+<% @nodesets.each_value do |set| -%>
+<% set['gpus'].each do |type, count| -%>
+NodeName=<%= set['hostlist'] %> Name=gpu Type=<%= type %> Count=<%= count %>
+<% end -%>
+<% end -%>

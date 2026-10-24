@@ -1,0 +1,4 @@
+# MariaDB server settings of the lab, read after the package defaults (50-server.cnf).
+[mariadbd]
+# SQL run at every start: it creates the database user of slurmdbd.
+init-file = /etc/mysql/hpc-lab-init.sql

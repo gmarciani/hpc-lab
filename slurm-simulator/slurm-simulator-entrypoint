@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Converge the slurm-simulator cookbook (packages, the simulator build, MariaDB,
+# the simulated cluster), then run MariaDB. HPC_LAB_HOME is set by the Dockerfile.
+set -euo pipefail
+cinc-client -c "${HPC_LAB_HOME}/chef/client.rb" -o 'recipe[hpc-lab-slurm-simulator]'
+# MariaDB stays the container's main process, so the container lives as long as
+# the accounting database every simulation needs; simulations run next to it
+# (slurm-simulate). It logs to stderr, which shows in `docker logs`.
+exec mariadbd --user=mysql

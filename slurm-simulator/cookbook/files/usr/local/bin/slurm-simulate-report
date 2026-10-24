@@ -1,0 +1,332 @@
+#!/usr/bin/env python3
+"""Plot the results of Slurm Simulator runs: resource utilization, throughput and
+jobs completed, with a summary table, one color per run.
+
+  slurm-simulate-report RUN [RUN...]
+
+RUN is a results folder in slurm-simulator/results, <run>_<time of the run>, or a
+run name alone, <run>, for its latest folder. One run writes report.png, report.pdf
+and summary.csv into its folder; several runs, compared in one figure, write
+<RUN>_vs_<RUN>..._<time of the report>.png, .pdf and .csv next to them. A run's data are its jobcomp.log (one
+line per finished job: submit, start and end time, allocated CPUs and TRES) and its
+slurm.conf (the cluster's capacity and the policy). HPC_LAB_HOME is set by the
+Dockerfile.
+"""
+import csv
+import os
+import re
+import sys
+from datetime import datetime
+
+import matplotlib
+
+matplotlib.use('Agg')  # no display in the container: render to a file
+import matplotlib.pyplot as plt  # noqa: E402
+
+RESULTS = os.path.join(os.environ['HPC_LAB_HOME'], 'slurm-simulator', 'results')
+
+# Paper style: a serif font like the journals' Times (STIX, shipped with matplotlib)
+# and its math, black text and axes on white, ticks inside a closed box.
+plt.rcParams.update({
+    'font.family': 'serif', 'font.serif': ['STIXGeneral', 'DejaVu Serif'], 'mathtext.fontset': 'stix',
+    'axes.linewidth': 0.8, 'axes.edgecolor': 'black', 'axes.labelcolor': 'black', 'text.color': 'black',
+    'xtick.direction': 'in', 'ytick.direction': 'in', 'xtick.top': True, 'ytick.right': True,
+    'xtick.minor.visible': True, 'ytick.minor.visible': True, 'xtick.color': 'black', 'ytick.color': 'black',
+    'pdf.fonttype': 42,  # TrueType fonts in the PDF, as publishers require, not Type 3
+})
+SURFACE = 'white'
+TEXT_PRIMARY = 'black'
+GRID = '#e0e0e0'  # Material Grey 300
+# One color and line style per run, in this fixed order, so a run keeps both: Material
+# Design hues (600, orange 800 for contrast on white) ordered so that neighbors stay
+# apart for color-blind readers; the line styles tell the runs apart in grayscale too.
+SERIES = ['#1E88E5', '#F4511E', '#43A047', '#8E24AA', '#EF6C00', '#00897B', '#D81B60', '#3949AB']
+LINES = ['-', '--', '-.', ':', (0, (5, 1)), (0, (3, 1, 1, 1, 1, 1)), (0, (1, 3)), (0, (8, 3))]
+
+# Share of the table's width for the swatch column, which shows each run's line.
+SWATCH = 0.04
+
+# Throughput windows, in minutes: the plot counts finished jobs in the shortest one
+# that splits the longest run into at most WINDOWS windows.
+WINDOW_MINUTES = [1, 2, 5, 10, 15, 30, 60, 120, 240, 360, 720, 1440]
+WINDOWS = 20
+
+# Memory sizes in Slurm's units, as MiB.
+UNITS = {'K': 1 / 1024, 'M': 1, 'G': 1024, 'T': 1024 * 1024}
+
+
+def mebibytes(size):
+    return float(size[:-1]) * UNITS[size[-1]] if size[-1] in UNITS else float(size) / 2**20
+
+
+def tres(spec):
+    """cpu=2,mem=2G,node=1,gres/gpu=1 -> {'cpu': 2, 'mem': 2048, 'gpu': 1, ...}"""
+    values = dict(item.split('=', 1) for item in spec.split(',') if '=' in item)
+    return {'mem': mebibytes(values['mem']) if 'mem' in values else 0.0,
+            'gpu': float(values.get('gres/gpu', 0))}
+
+
+def read_cluster(path):
+    """Capacity and policy from slurm.conf: total CPUs, memory (MiB), GPUs, nodes."""
+    capacity = {'cpu': 0.0, 'mem': 0.0, 'gpu': 0.0, 'nodes': 0}
+    policy = {}
+    with open(path) as conf:
+        for line in conf:
+            line = line.split('#', 1)[0].strip()
+            key, _, value = line.partition('=')
+            if key in ('SchedulerType', 'PriorityType'):
+                policy[key] = value
+            if key != 'NodeName':
+                continue
+            settings = dict(item.split('=', 1) for item in line.split()[1:])
+            # The node sets render as <name>-[<first>-<last>]; a plain name is one node.
+            ranges = re.search(r'\[(\d+)-(\d+)\]', value.split()[0])
+            count = int(ranges.group(2)) - int(ranges.group(1)) + 1 if ranges else 1
+            capacity['nodes'] += count
+            capacity['cpu'] += count * int(settings['CPUs'])
+            capacity['mem'] += count * int(settings['RealMemory'])
+            # Gres=gpu:a100:1,gpu:h100:1: the GPUs of a node, the last field the count.
+            gpus = sum(int(gres.rsplit(':', 1)[1]) for gres in settings.get('Gres', '').split(',') if gres)
+            capacity['gpu'] += count * gpus
+    return capacity, policy
+
+
+def read_jobs(path):
+    """The finished jobs of jobcomp.log that started: times in seconds, resources."""
+    jobs = []
+    with open(path) as log:
+        for line in log:
+            fields = dict(re.findall(r'(\w+)=(\S*)', line))
+            if fields.get('StartTime', 'Unknown') == 'Unknown':
+                continue  # cancelled before it started: no use of resources
+            seconds = {key: datetime.fromisoformat(fields[key]).timestamp() for key in ('SubmitTime', 'StartTime', 'EndTime')}
+            used = tres(fields['Tres'])
+            jobs.append({'name': fields['Name'], 'state': fields['JobState'],
+                         'submit': seconds['SubmitTime'], 'start': seconds['StartTime'], 'end': seconds['EndTime'],
+                         'cpu': float(fields['ProcCnt']), 'mem': used['mem'], 'gpu': used['gpu']})
+    return jobs
+
+
+def utilization(jobs, resource, capacity, origin):
+    """Step function of the share of a resource in use: hours, percent."""
+    deltas = {}
+    for job in jobs:
+        deltas[job['start']] = deltas.get(job['start'], 0) + job[resource]
+        deltas[job['end']] = deltas.get(job['end'], 0) - job[resource]
+    hours, percent, used = [0.0], [0.0], 0.0
+    for time in sorted(deltas):
+        used += deltas[time]
+        hours.append((time - origin) / 3600)
+        percent.append(100 * used / capacity if capacity else 0)
+    return hours, percent
+
+
+def window_minutes(runs):
+    longest = max(max(job['end'] for job in run['jobs']) - run['origin'] for run in runs) / 60
+    return next((minutes for minutes in WINDOW_MINUTES if minutes * WINDOWS >= longest), WINDOW_MINUTES[-1])
+
+
+def throughput(jobs, origin, minutes):
+    """Jobs finished in each window of the given minutes, as jobs per hour: the
+    start of each window, in hours since origin, and its rate."""
+    counts = {}
+    for job in jobs:
+        window = int((job['end'] - origin) // (minutes * 60))
+        counts[window] = counts.get(window, 0) + 1
+    windows = range(max(counts) + 2)  # one empty window past the last, where the line drops
+    return [window * minutes / 60 for window in windows], [counts.get(window, 0) * 60 / minutes for window in windows]
+
+
+def mean_utilization(jobs, resource, capacity, span):
+    busy = sum(job[resource] * (job['end'] - job['start']) for job in jobs)
+    return 100 * busy / (capacity * span) if capacity and span else None
+
+
+def percentile(values, share):
+    ordered = sorted(values)
+    return ordered[min(len(ordered) - 1, int(share * len(ordered)))]
+
+
+def analyze(run):
+    folder = os.path.join(RESULTS, run)
+    capacity, policy = read_cluster(os.path.join(folder, 'slurm.conf'))
+    jobs = read_jobs(os.path.join(folder, 'jobcomp.log'))
+    if not jobs:
+        sys.exit(f'no finished job in {folder}/jobcomp.log')
+    workload = next((name for name in os.listdir(folder) if name.endswith('.events')), '?')
+    origin = min(job['submit'] for job in jobs)
+    span = max(job['end'] for job in jobs) - origin
+    completion = [(job['end'] - job['submit']) / 60 for job in jobs]  # minutes, submit to end
+    summary = {
+        'run': run, 'workload': workload,
+        'policy': f"{policy.get('SchedulerType', '?')}, {policy.get('PriorityType', '?')}",
+        'nodes': capacity['nodes'], 'cpus': int(capacity['cpu']), 'gpus': int(capacity['gpu']), 'jobs': len(jobs),
+        'cpu_util_pct': mean_utilization(jobs, 'cpu', capacity['cpu'], span),
+        'mem_util_pct': mean_utilization(jobs, 'mem', capacity['mem'], span),
+        'gpu_util_pct': mean_utilization(jobs, 'gpu', capacity['gpu'], span),
+        'throughput_jobs_per_h': len(jobs) / (span / 3600),
+        'completion_mean_min': sum(completion) / len(completion),
+        'completion_median_min': percentile(completion, 0.5),
+        'completion_p95_min': percentile(completion, 0.95),
+        'makespan_h': span / 3600,
+    }
+    return {'run': run, 'jobs': jobs, 'capacity': capacity, 'origin': origin, 'summary': summary}
+
+
+def style(axis, title, ylabel, xlabel):
+    axis.set_facecolor(SURFACE)
+    axis.set_title(title, loc='left', fontsize=12)
+    axis.set_ylabel(ylabel, fontsize=11)
+    axis.set_xlabel(xlabel, fontsize=11)
+    axis.tick_params(which='both', labelsize=10)
+    axis.tick_params(which='major', length=4, width=0.8)
+    axis.tick_params(which='minor', length=2, width=0.6)
+    axis.grid(True, which='major', color=GRID, linewidth=0.6, linestyle=':')
+    axis.set_axisbelow(True)
+
+
+def fit_table(figure, axis, table):
+    """Size each column to its widest text, measured as drawn, and the swatch column,
+    which has none, to a fixed share; shrink the font when they do not fit the axis."""
+    figure.canvas.draw()
+    renderer = figure.canvas.get_renderer()
+    available = axis.get_window_extent(renderer).width
+    needed = {}
+    for (_, column), cell in table.get_celld().items():
+        if column:
+            text = cell.get_text().get_window_extent(renderer).width
+            needed[column] = max(needed.get(column, 0), text / (1 - 2 * cell.PAD) + 4)
+    scale = min(1.0, (1 - SWATCH) * available / sum(needed.values()))
+    table.set_fontsize(9 * scale)
+    for (_, column), cell in table.get_celld().items():
+        cell.set_width(scale * needed[column] / available if column else SWATCH)
+
+
+def fmt(value, digits=1):
+    return '-' if value is None else f'{value:.{digits}f}'
+
+
+def plot(runs, output):
+    resources = [('cpu', 'CPU'), ('mem', 'Memory')]
+    if any(run['capacity']['gpu'] for run in runs):
+        resources.append(('gpu', 'GPU'))
+    rows = len(resources) + 3  # utilization panels, throughput, jobs completed, table
+    figure, axes = plt.subplots(rows, 1, figsize=(10, 2.4 * (rows - 1) + 0.5 + 0.3 * len(runs)),
+                                gridspec_kw={'height_ratios': [1] * (rows - 1) + [0.25 + 0.12 * len(runs)]})
+    figure.patch.set_facecolor(SURFACE)
+    hours_label = 'hours since the first submission'
+    minutes = window_minutes(runs)
+
+    for index, run in enumerate(runs):
+        line = {'where': 'post', 'color': SERIES[index], 'linestyle': LINES[index], 'linewidth': 1.4}
+        for axis, (resource, _) in zip(axes, resources):
+            hours, percent = utilization(run['jobs'], resource, run['capacity'][resource], run['origin'])
+            axis.step(hours, percent, label=run['run'], **line)
+        # Throughput: jobs finished per hour, window by window.
+        hours, rates = throughput(run['jobs'], run['origin'], minutes)
+        axes[len(resources)].step(hours, rates, **line)
+        # Jobs completed: jobs finished so far.
+        ends = sorted((job['end'] - run['origin']) / 3600 for job in run['jobs'])
+        axes[len(resources) + 1].step([0] + ends, range(len(ends) + 1), **line)
+
+    # Every panel shares the time axis, labeled once below the last; panels are
+    # lettered as in a paper's figure.
+    titles = [f'{name} utilization' for _, name in resources] + ['Throughput', 'Jobs completed']
+    titles = [f'({chr(ord("a") + index)}) {title}' for index, title in enumerate(titles)]
+    for axis, title in zip(axes, titles[:len(resources)]):
+        style(axis, title, '% of the cluster in use', '')
+        axis.set_ylim(0, 105)
+    style(axes[len(resources)], titles[len(resources)], f'jobs/h, per {minutes} min', '')
+    style(axes[len(resources) + 1], titles[len(resources) + 1], 'jobs completed', hours_label)
+    for axis in axes[:len(resources) + 1]:
+        axis.sharex(axes[len(resources) + 1])
+        axis.tick_params(labelbottom=False)
+
+    # Summary table: one row per run, whose first cell shows the run's line; the text
+    # stays black, and only horizontal rules separate the header, as in a paper.
+    table_axis = axes[-1]
+    table_axis.axis('off')
+    header = ['', 'run', 'policy', 'nodes', 'jobs', 'CPU %', 'mem %', 'GPU %', 'jobs/h', 'completion mean / median / p95 (min)', 'makespan (h)']
+    cells = [['', s['run'], s['policy'], s['nodes'], s['jobs'], fmt(s['cpu_util_pct']), fmt(s['mem_util_pct']), fmt(s['gpu_util_pct']),
+              fmt(s['throughput_jobs_per_h']),
+              f"{fmt(s['completion_mean_min'])} / {fmt(s['completion_median_min'])} / {fmt(s['completion_p95_min'])}", fmt(s['makespan_h'], 2)]
+             for s in (run['summary'] for run in runs)]
+    # Columns are sized to their texts once the figure is laid out (fit_table).
+    table = table_axis.table(cellText=cells, colLabels=header, loc='center', cellLoc='left', colLoc='left')
+    table.auto_set_font_size(False)
+    table.set_fontsize(9)
+    for (row, column), cell in table.get_celld().items():
+        cell.PAD = 0.03  # of the cell's width, 0.1 by default, which clips the longest texts
+        cell.visible_edges = 'TB' if row == 0 else 'B' if row == len(runs) else ''
+        cell.set_linewidth(0.8)
+        cell.set_facecolor(SURFACE)
+        cell.get_text().set_color(TEXT_PRIMARY)
+
+    workloads = sorted({run['summary']['workload'] for run in runs})
+    # The run names without their time stamps; the legend and the table give the folders.
+    names = [re.sub(STAMP + '$', '', run['run']) for run in runs]
+    figure.suptitle(f"Slurm Simulator: {', '.join(names)} on {', '.join(workloads)}",
+                    x=0.01, y=0.995, ha='left', fontsize=14)
+    # The legend, under the title, for two runs or more; one run is named by the title.
+    top = 0.975
+    if len(runs) > 1:
+        figure.legend(*axes[0].get_legend_handles_labels(), loc='upper left', bbox_to_anchor=(0.01, 0.98),
+                      ncol=min(len(runs), 4), fontsize=10, frameon=True, fancybox=False, edgecolor='black',
+                      handlelength=3)
+        top = 0.96 - 0.015 * ((len(runs) - 1) // 4)  # a row of the legend per four runs
+    figure.tight_layout(rect=(0, 0, 1, top))
+    fit_table(figure, table_axis, table)
+    figure.canvas.draw()
+    to_figure = figure.transFigure.inverted()
+    for row in range(1, len(runs) + 1):
+        (left, bottom), (right, top) = to_figure.transform(table[row, 0].get_window_extent(figure.canvas.get_renderer()))
+        margin = 0.15 * (right - left)
+        figure.add_artist(plt.Line2D([left + margin, right - margin], [(bottom + top) / 2] * 2,
+                                     color=SERIES[row - 1], linestyle=LINES[row - 1], linewidth=1.4))
+    # A PNG to look at and a vector PDF for papers.
+    for extension in ('.png', '.pdf'):
+        figure.savefig(output + extension, dpi=150, facecolor=SURFACE)
+
+
+# The suffix slurm-simulate adds to a run's folder: _<time of the run, UTC>.
+STAMP = r'_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}'
+
+
+def folder(name):
+    """The results folder of a run: the folder itself, or the latest of a run name."""
+    if os.path.isfile(os.path.join(RESULTS, name, 'jobcomp.log')):
+        return name
+    # The time stamps sort as text in time order: the last folder is the latest run.
+    runs = sorted(entry for entry in os.listdir(RESULTS) if re.fullmatch(re.escape(name) + STAMP, entry)
+                  and os.path.isfile(os.path.join(RESULTS, entry, 'jobcomp.log')))
+    if not runs:
+        sys.exit(f'no run {name} in slurm-simulator/results')
+    return runs[-1]
+
+
+def main(names):
+    if not names:
+        sys.exit(__doc__)
+    if len(names) > len(SERIES):
+        sys.exit(f'at most {len(SERIES)} runs in one report, one color each')
+    runs = [analyze(folder(name)) for name in names]
+    if len(names) == 1:
+        image, table = (os.path.join(RESULTS, runs[0]['run'], name) for name in ('report', 'summary.csv'))
+    else:
+        base = '_vs_'.join(names) + datetime.utcnow().strftime('_%Y-%m-%d_%H-%M-%S')
+        image, table = (os.path.join(RESULTS, base + extension) for extension in ('', '.csv'))
+    plot(runs, image)
+    with open(table, 'w', newline='') as out:
+        writer = csv.DictWriter(out, fieldnames=list(runs[0]['summary']))
+        writer.writeheader()
+        writer.writerows(run['summary'] for run in runs)
+    for run in runs:
+        s = run['summary']
+        print(f"{s['run']}: CPU {fmt(s['cpu_util_pct'])} %, memory {fmt(s['mem_util_pct'])} %, GPU {fmt(s['gpu_util_pct'])} %,"
+              f" {fmt(s['throughput_jobs_per_h'])} jobs/h, completion mean {fmt(s['completion_mean_min'])} min,"
+              f" p95 {fmt(s['completion_p95_min'])} min, makespan {fmt(s['makespan_h'], 2)} h")
+    print(f'report in slurm-simulator/results/{os.path.relpath(image, RESULTS)}.png and .pdf')
+
+
+if __name__ == '__main__':
+    main(sys.argv[1:])

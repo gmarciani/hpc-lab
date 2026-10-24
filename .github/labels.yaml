@@ -47,6 +47,9 @@ labels:
   - name: Slurm
     description: Changes to the Slurm cluster (slurm/).
     color: 0E8A16
+  - name: Slurm Simulator
+    description: Changes to the Slurm Simulator (slurm-simulator/).
+    color: 1A7F37
   - name: Test
     description: Improvements or additions related to testing.
     color: 95C8EA
@@ -76,6 +79,7 @@ repos:
       - Security
       - Skip Changelog Update
       - Slurm
+      - Slurm Simulator
       - Test
       - Triage
       - Wont Fix

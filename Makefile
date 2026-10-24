@@ -2,7 +2,7 @@
 default: build
 ## List the targets with their description
 help:
-	@awk '/^## / { desc = substr($$0, 4); next } /^[a-z][a-z0-9-]*:/ && desc { sub(/:.*/, "", $$1); printf "  %-18s %s\n", $$1, desc } { desc = "" }' ${MAKEFILE_LIST}
+	@awk '/^## / { desc = substr($$0, 4); next } /^[a-z][a-z0-9-]*:/ && desc { sub(/:.*/, "", $$1); printf "  %-26s %s\n", $$1, desc } { desc = "" }' ${MAKEFILE_LIST}
 
 COMPOSE_FILE="docker-compose.yaml"
 SSH_KEY=admin/ssh/id_ed25519
@@ -14,9 +14,9 @@ WORKERS=$(or $(workers),$(shell docker compose -f ${COMPOSE_FILE} ps --all --qui
 SERVICE=$(if $(filter kubernetes-worker-%,$(service)),--index $(service:kubernetes-worker-%=%) kubernetes-worker,$(service))
 
 # Cookstyle and ChefSpec run in the Cinc Workstation image; no Ruby on the host.
-# `cookbook=admin` (or kubernetes, slurm) restricts lint-chef and test-chef to one cookbook.
+# `cookbook=admin` (or kubernetes, slurm, slurm-simulator) restricts lint-chef and test-chef to one cookbook.
 CHEF_RUN=docker run --rm -v $(CURDIR):/workspace -w /workspace cincproject/workstation:26.3.0
-COOKBOOKS=$(or $(cookbook),admin kubernetes slurm)
+COOKBOOKS=$(or $(cookbook),admin kubernetes slurm slurm-simulator)
 # ShellCheck lints every tracked shell script, found by the shebang on its first
 # line (a shebang further down, e.g. in a docs example, does not count);
 # .shellcheckrc holds the checks disabled for the whole repo.
@@ -46,26 +46,28 @@ docker-check:
 ## Install the host prerequisites (Docker, Compose, GNU Make)
 setup:
 	bash resources/tools/setup-dev-environment.sh
-## Build the images (service=NAME for one)
+## Build the lab images (service=NAME for one, e.g. slurm-simulator)
 build: docker-check
 	docker compose -f ${COMPOSE_FILE} build $(service)
 ## Build, start Kubernetes, deploy Slurm, then describe the lab
 start: build start-kubernetes start-slurm
 	@$(MAKE) describe
-## Stop the containers (service=NAME for one)
+## Stop the lab containers (service=NAME for one, e.g. slurm-simulator)
 stop: docker-check
 	docker compose -f ${COMPOSE_FILE} stop $(service)
 ## Stop, then start
 restart: stop start
-## Destroy everything, then start from scratch
+## Destroy everything, then start the lab from scratch (not the Slurm Simulator)
 redeploy: clean start
 # A recreated container mounts the anonymous volumes of the one it replaces by
 # name, so `down --volumes` leaves them behind: collect the volumes of every
 # container first and remove whatever is left after `down`.
-## Destroy the containers, local images and volumes
+# Unlike the other lab targets, clean also destroys the Slurm Simulator: its
+# profile, enabled here, adds it to `down`.
+## Destroy everything, the Slurm Simulator included: containers, local images, volumes
 clean: docker-check
 	volumes="$$(docker compose -f ${COMPOSE_FILE} ps --all --quiet | xargs -r docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}} {{end}}{{end}}')" && \
-	docker compose -f ${COMPOSE_FILE} down --rmi local --volumes --remove-orphans && \
+	docker compose -f ${COMPOSE_FILE} --profile slurm-simulator down --rmi local --volumes --remove-orphans && \
 	echo $${volumes} | xargs -r docker volume rm --force >/dev/null
 ## List the containers with their state and URL
 show:
@@ -93,7 +95,7 @@ start-kubernetes: docker-check kubernetes/.env.secrets.local ${SSH_KEY}
 	docker compose -f ${COMPOSE_FILE} ps --all --format '{{.Name}}' kubernetes-worker | awk -F- '$$NF > ${WORKERS}' | xargs -r docker rm --force --volumes
 	docker compose -f ${COMPOSE_FILE} up --detach --wait --scale kubernetes-worker=${WORKERS}
 	docker compose -f ${COMPOSE_FILE} exec -T admin kubernetes-wait ${WORKERS}
-## Stop every container, keeping the cluster state
+## Stop the admin and Kubernetes containers, keeping the cluster state
 stop-kubernetes: docker-check
 	docker compose -f ${COMPOSE_FILE} stop
 ## Health check of the Kubernetes cluster
@@ -108,6 +110,24 @@ stop-slurm: docker-check
 ## Submit a hello world batch job
 test-slurm:
 	docker compose -f ${COMPOSE_FILE} exec -T admin slurm-test
+
+## Build and start the Slurm Simulator, independent of the clusters
+start-slurm-simulator: docker-check
+	docker compose -f ${COMPOSE_FILE} up --detach --wait --build slurm-simulator
+## Stop the Slurm Simulator
+stop-slurm-simulator: docker-check
+	docker compose -f ${COMPOSE_FILE} stop slurm-simulator
+## Destroy the Slurm Simulator container, image and network; results stay
+clean-slurm-simulator: docker-check
+	docker compose -f ${COMPOSE_FILE} down --rmi local --volumes slurm-simulator
+## Destroy the Slurm Simulator, then start it from scratch (a new simulator version)
+redeploy-slurm-simulator: clean-slurm-simulator start-slurm-simulator
+## Simulate and plot a workload (workload=FILE, default lab.events; config=FILE, default baseline.json; run=NAME)
+simulate-slurm: docker-check
+	docker compose -f ${COMPOSE_FILE} exec -T slurm-simulator slurm-simulate "$(workload)" "$(run)" "$(config)"
+## Plot simulations side by side (runs="RUN ...": a run name for its latest, or a folder)
+report-slurm: docker-check
+	docker compose -f ${COMPOSE_FILE} exec -T slurm-simulator slurm-simulate-report $(runs)
 
 ## Lint the cookbooks with Cookstyle (cookbook=NAME for one)
 lint-chef: docker-check

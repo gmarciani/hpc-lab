@@ -1,0 +1,107 @@
+# slurm.conf of the simulated cluster, from the hpc-lab-slurm-simulator attributes.
+# The simulator is Slurm's own controller, so this is a regular slurm.conf; the
+# first settings replace the real nodes and daemons the simulator does without.
+# Reference: https://slurm.schedmd.com/slurm.conf.html
+ClusterName=<%= @simulator['cluster_name'] %>
+
+# The controller and slurmdbd run in this container, as root: the simulator runs
+# them as the user who starts it (slurm-simulate, root), who can write the results
+# folder mounted from the host.
+SlurmctldHost=localhost
+SlurmUser=root
+SlurmdUser=root
+
+# One front end stands for every simulated node (the build's --enable-front-end).
+FrontEndName=localhost
+# The nodes are what this file says, not what the front end reports: without it,
+# the controller checks the GPUs of every node against the front end's, and sets
+# the nodes with GPUs DOWN.
+SlurmdParameters=config_overrides
+
+# No authentication or job credentials: nothing outside the container talks to the
+# daemons, and no job really runs.
+AuthType=auth/none
+CredType=cred/none
+
+# No process to track or confine: the simulated jobs only take time on the clock.
+ProctrackType=proctrack/pgid
+TaskPlugin=task/none
+
+# Job mail goes nowhere; the default mail program is not installed.
+MailProg=/bin/true
+
+# Files of a simulation: controller state and logs. slurm-simulate deletes them
+# before a simulation and copies the logs into its results.
+StateSaveLocation=<%= @sim_home %>/var/state
+SlurmdSpoolDir=<%= @sim_home %>/var/spool
+SlurmctldPidFile=<%= @sim_home %>/var/slurmctld.pid
+SlurmctldLogFile=<%= @sim_home %>/log/slurmctld.log
+SlurmdLogFile=<%= @sim_home %>/log/slurmd.log
+
+# Backfill decisions in slurmctld.log, and each scheduling pass in sched.log.
+DebugFlags=Backfill
+SlurmSchedLogFile=<%= @sim_home %>/log/sched.log
+SlurmSchedLogLevel=1
+
+# Every finished job, one line each: the main result of a simulation.
+JobCompType=jobcomp/filetxt
+JobCompLoc=<%= @sim_home %>/log/jobcomp.log
+
+# Accounting: slurmdbd (slurmdbd.conf) stores every job, and the accounts and users
+# of sacctmgr.script; a job must belong to one of them.
+AccountingStorageType=accounting_storage/slurmdbd
+AccountingStorageHost=localhost
+AccountingStorageEnforce=associations,limits,qos
+
+# Seconds a finished job stays visible to scontrol and squeue.
+MinJobAge=<%= @simulator['slurm_conf']['MinJobAge'] %>
+
+# Scheduling policy, from the slurm_conf attributes.
+# Scheduler: sched/backfill starts lower-priority jobs when they do not delay the
+# expected start of higher-priority ones; sched/builtin runs jobs in priority order.
+SchedulerType=<%= @simulator['slurm_conf']['SchedulerType'] %>
+# Scheduler tuning, e.g. how often backfill runs (bf_interval, seconds) and how far
+# ahead it plans (bf_window, minutes).
+SchedulerParameters=<%= @simulator['slurm_conf']['SchedulerParameters'] %>
+
+# Cores and memory are consumable resources, allocated per job on a node.
+SelectType=<%= @simulator['slurm_conf']['SelectType'] %>
+SelectTypeParameters=<%= @simulator['slurm_conf']['SelectTypeParameters'] %>
+
+# Memory of a job that does not ask for any, per allocated CPU, in MiB.
+DefMemPerCPU=<%= @simulator['slurm_conf']['DefMemPerCPU'] %>
+
+# Job priority: priority/multifactor weighs the factors below, priority/basic is first
+# in, first out, and <type>/<name> is a plugin of slurm-simulator/plugins (priority/sjf).
+PriorityType=<%= @simulator['slurm_conf']['PriorityType'] %>
+# Half-life of the past usage that fairshare counts.
+PriorityDecayHalfLife=<%= @simulator['slurm_conf']['PriorityDecayHalfLife'] %>
+# Wait after which the age factor is at its maximum.
+PriorityMaxAge=<%= @simulator['slurm_conf']['PriorityMaxAge'] %>
+# Weights of the factors: time waited, fairshare of the account, size of the job,
+# partition and QOS.
+PriorityWeightAge=<%= @simulator['slurm_conf']['PriorityWeightAge'] %>
+PriorityWeightFairshare=<%= @simulator['slurm_conf']['PriorityWeightFairshare'] %>
+PriorityWeightJobSize=<%= @simulator['slurm_conf']['PriorityWeightJobSize'] %>
+PriorityWeightPartition=<%= @simulator['slurm_conf']['PriorityWeightPartition'] %>
+PriorityWeightQOS=<%= @simulator['slurm_conf']['PriorityWeightQOS'] %>
+
+<% if @nodesets.values.any? { |set| !set['gpus'].empty? } -%>
+# Generic resources the nodes may offer: GPUs (gres.conf), which jobs ask for
+# with --gres=gpu[:<type>]:<count> or --gpus.
+GresTypes=gpu
+# GPUs in the accounting too, so jobcomp.log records each job's (Tres=...,gres/gpu=N),
+# from which slurm-simulate-report computes the GPU utilization.
+AccountingStorageTRES=gres/gpu
+
+<% end -%>
+# Nodes, one line per node set: CPUs and memory (MiB) from its limits, features
+# (--constraint) and GPUs counted by type.
+<% @nodesets.each_value do |set| -%>
+NodeName=<%= set['hostlist'] %> CPUs=<%= set['cpus'] %> RealMemory=<%= set['memory'] %><% unless set['features'].empty? %> Features=<%= set['features'].join(',') %><% end %><% unless set['gpus'].empty? %> Gres=<%= set['gpus'].map { |type, count| "gpu:#{type}:#{count}" }.join(',') %><% end %>
+<% end -%>
+
+# Partitions (queues): the nodes of their node sets and the parameters of their configMap.
+<% @partitions.each do |name, partition| -%>
+PartitionName=<%= name %> Nodes=<%= partition['nodes'] %><% partition['config'].each do |key, value| %> <%= key %>=<%= value %><% end %>
+<% end -%>
